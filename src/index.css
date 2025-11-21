@@ -1,0 +1,12 @@
+/* Paste this into src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #f9fafb; /* gray-50 */
+}
+
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
