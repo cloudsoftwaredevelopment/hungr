@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, ShoppingBag, Home, User, MapPin, Star, Clock, Plus, Minus, ChevronLeft, X, Trash2, Receipt, AlertCircle, Loader } from 'lucide-react';
+import { Search, ShoppingBag, MapPin, Star, Clock, Plus, Minus, ChevronLeft, X, Trash2, Receipt, AlertCircle, Loader } from 'lucide-react';
 import { API_ENDPOINTS, handleApiResponse, handleApiError, logApiCall } from './config/api';
+import { AuthProvider, AuthContext } from './contexts/AuthContext';
+import { useAuth } from './hooks/useAuth';
+import AuthModal from './components/Auth/AuthModal';
+import BottomNav from './components/Navigation/BottomNav';
+import ProfileView from './components/Profile/ProfileView';
+import WalletView from './components/Wallet/WalletView';
+import TransactionHistory from './components/Transactions/TransactionHistory';
+import CoinDisplay from './components/Wallet/CoinDisplay';
 
-// --- MAIN COMPONENT ---
-export default function App() {
+// --- MAIN APP COMPONENT ---
+function AppContent() {
   // STATE
+  const { isAuthenticated, user } = useAuth();
   const [view, setView] = useState('home');
   const [activeRestaurant, setActiveRestaurant] = useState(null);
   const [cart, setCart] = useState([]);
@@ -16,6 +25,7 @@ export default function App() {
   const [menuError, setMenuError] = useState(null);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // INITIAL LOAD - Fetch restaurants on mount
   useEffect(() => {
@@ -59,10 +69,9 @@ export default function App() {
       const data = await handleApiResponse(response);
       
       if (data.success) {
-        // Data is already grouped by category from backend
         setActiveRestaurant(prev => ({
           ...prev,
-          menu: data.data // This is the grouped menu object
+          menu: data.data
         }));
       } else {
         throw new Error(data.error || 'Failed to fetch menu');
@@ -85,7 +94,6 @@ export default function App() {
 
   // CART ACTIONS
   const addToCart = (item, restaurant) => {
-    // Check if adding from a different restaurant
     if (cart.length > 0 && cart[0].restaurantId !== restaurant.id) {
       if (!window.confirm('Start a new basket? You can only order from one restaurant at a time.')) {
         return;
@@ -130,6 +138,11 @@ export default function App() {
 
   // PLACE ORDER - Call actual API
   const placeOrder = async () => {
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
+      return;
+    }
+
     if (cart.length === 0) {
       setOrderError('Your cart is empty');
       return;
@@ -141,7 +154,7 @@ export default function App() {
     try {
       const restaurantId = cart[0].restaurantId;
       const orderPayload = {
-        userId: 1, // Will use authenticated user in Phase 2
+        userId: user.id,
         restaurantId: restaurantId,
         items: cart.map(item => ({
           id: item.id,
@@ -167,7 +180,6 @@ export default function App() {
         console.log('✅ Order placed successfully:', data.data);
         setCart([]);
         setView('success');
-        // Reset to home after 3 seconds
         setTimeout(() => setView('home'), 3000);
       } else {
         throw new Error(data.error || 'Failed to place order');
@@ -207,55 +219,30 @@ export default function App() {
     </div>
   );
 
-  // Bottom Navigation - Fixed width on desktop
-  const BottomNav = () => (
-      <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 py-3 px-6 flex justify-between items-center z-50 safe-area-pb md:left-1/2 md:transform md:-translate-x-1/2 md:w-96 md:rounded-t-3xl md:bottom-0">
-	  <button onClick={() => setView('home')} className={`flex flex-col items-center ${view === 'home' ? 'text-orange-600' : 'text-gray-400'}`}>
-        <Home size={24} />
-        <span className="text-xs mt-1">Home</span>
-      </button>
-      <button onClick={() => {}} className="flex flex-col items-center text-gray-400">
-        <Search size={24} />
-        <span className="text-xs mt-1">Search</span>
-      </button>
-      <button onClick={() => setView('cart')} className={`flex flex-col items-center ${view === 'cart' ? 'text-orange-600' : 'text-gray-400'} relative`}>
-        <div className="relative">
-          <ShoppingBag size={24} />
-          {cart.length > 0 && (
-            <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-              {cart.reduce((a, b) => a + b.quantity, 0)}
-            </span>
-          )}
-        </div>
-        <span className="text-xs mt-1">Orders</span>
-      </button>
-      <button onClick={() => setView('profile')} className={`flex flex-col items-center ${view === 'profile' ? 'text-orange-600' : 'text-gray-400'}`}>
-        <User size={24} />
-        <span className="text-xs mt-1">Profile</span>
-      </button>
-    </div>
-  );
-
   // MAIN RENDER
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl md:border-x md:border-gray-200 relative overflow-hidden">
       
-      {/* TOP BAR */}
+      {/* TOP BAR - Updated: Removed "Delivering to", Added Coins & Profile */}
       <div className="bg-orange-600 text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-40">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="bg-white/20 p-2 rounded-full">
-              <MapPin size={18} className="text-white" />
-            </div>
-            <div>
-              <p className="text-xs text-orange-100 uppercase tracking-wider font-bold">Delivering to</p>
-              <p className="font-semibold text-sm flex items-center gap-1 cursor-pointer">
-                Iloilo Business Park <span className="text-orange-200 text-xs">▼</span>
-              </p>
-            </div>
+          <div className="flex-1">
+            {view === 'home' && (
+              <h1 className="text-2xl font-bold">Hungr</h1>
+            )}
           </div>
-          <div className="w-8 h-8 bg-orange-700 rounded-full flex items-center justify-center font-bold text-sm">
-            JD
+          
+          {/* Right Section: Coins + Profile */}
+          <div className="flex items-center gap-4">
+            <CoinDisplay onClick={() => setView('wallet')} />
+            
+            <button
+              onClick={() => isAuthenticated ? setView('profile') : setShowAuthModal(true)}
+              className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-sm hover:bg-white/30 transition cursor-pointer"
+              title={isAuthenticated ? 'Profile' : 'Login/Signup'}
+            >
+              {isAuthenticated && user ? user.username?.charAt(0).toUpperCase() : 'G'}
+            </button>
           </div>
         </div>
         
@@ -279,19 +266,21 @@ export default function App() {
         {/* HOME VIEW */}
         {view === 'home' && (
           <>
-            {/* Error Banner */}
             {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
-            {/* Categories - Updated */}
+            {/* Categories - Updated Design */}
             <div className="grid grid-cols-4 gap-4 mb-6">
               {[
-                { label: 'Food', emoji: '🍔' },
-                { label: 'Pabili', emoji: '📋' },
-                { label: 'Stores', emoji: '🏪' },
-                { label: 'Ride', emoji: '🚗' }
+                { label: 'Food', emoji: '🍔', bg: 'from-red-400 to-red-500' },
+                { label: 'Pabili', emoji: '🛒', bg: 'from-blue-400 to-blue-500' },
+                { label: 'Stores', emoji: '🏪', bg: 'from-purple-400 to-purple-500' },
+                { label: 'Ride', emoji: '🚗', bg: 'from-green-400 to-green-500' }
               ].map((cat) => (
-                <div key={cat.label} className="flex flex-col items-center gap-2 cursor-pointer hover:opacity-80 transition">
-                  <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center text-2xl shadow-sm text-orange-600">
+                <div
+                  key={cat.label}
+                  className={`flex flex-col items-center gap-2 cursor-pointer hover:opacity-90 hover:scale-105 transition-all active:scale-95`}
+                >
+                  <div className={`w-14 h-14 bg-gradient-to-br ${cat.bg} rounded-2xl flex items-center justify-center text-2xl shadow-lg hover:shadow-xl transition-shadow text-white`}>
                     {cat.emoji}
                   </div>
                   <span className="text-xs font-medium text-gray-600">{cat.label}</span>
@@ -345,7 +334,6 @@ export default function App() {
         {/* RESTAURANT VIEW */}
         {view === 'restaurant' && activeRestaurant && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-            {/* Error Banner */}
             {menuError && <ErrorBanner message={menuError} onDismiss={() => setMenuError(null)} />}
 
             <button onClick={() => setView('home')} className="mb-4 flex items-center gap-1 text-sm text-gray-500 hover:text-orange-600">
@@ -364,7 +352,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Menu Loading State */}
             {menuLoading ? (
               <div className="space-y-4">
                 {[1, 2, 3].map(i => (
@@ -412,7 +399,6 @@ export default function App() {
               <ShoppingBag className="text-orange-600" /> Your Basket
             </h2>
             
-            {/* Error Banner */}
             {orderError && <ErrorBanner message={orderError} onDismiss={() => setOrderError(null)} />}
             
             {cart.length === 0 ? (
@@ -504,7 +490,7 @@ export default function App() {
               <Receipt size={40} />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Placed!</h2>
-            <p className="text-gray-500 max-w-xs mx-auto mb-2">Your food is being prepared. You can track it in the Orders tab.</p>
+            <p className="text-gray-500 max-w-xs mx-auto mb-2">Your food is being prepared. You can track it in the Transactions tab.</p>
             <p className="text-xs text-gray-400">Redirecting in 3 seconds...</p>
             <button onClick={() => setView('home')} className="mt-8 px-8 py-3 bg-gray-900 text-white rounded-xl font-bold text-sm shadow-lg">
               Back to Home
@@ -514,22 +500,26 @@ export default function App() {
 
         {/* PROFILE VIEW */}
         {view === 'profile' && (
-          <div>
-            <h2 className="text-2xl font-bold mb-6">Profile</h2>
-            <div className="bg-white p-4 rounded-xl shadow-sm flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center text-2xl">JD</div>
-              <div>
-                <h3 className="font-bold text-lg">John Doe</h3>
-                <p className="text-sm text-gray-500">+63 917 123 4567</p>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              {['Saved Addresses', 'Payment Methods', 'Order History', 'Help Center', 'Log Out'].map(item => (
-                <button key={item} className="w-full text-left p-4 bg-white rounded-xl shadow-sm text-sm font-medium text-gray-700 flex justify-between">
-                  {item} <ChevronLeft size={16} className="rotate-180 text-gray-400" />
-                </button>
-              ))}
+          <ProfileView setView={setView} />
+        )}
+
+        {/* WALLET VIEW */}
+        {view === 'wallet' && (
+          <WalletView />
+        )}
+
+        {/* TRANSACTIONS VIEW */}
+        {view === 'transactions' && (
+          <TransactionHistory />
+        )}
+
+        {/* INBOX VIEW (Placeholder) */}
+        {view === 'inbox' && (
+          <div className="pb-20">
+            <h2 className="text-xl font-bold mb-6">Inbox</h2>
+            <div className="text-center py-12 bg-white rounded-xl">
+              <div className="text-4xl mb-3">📬</div>
+              <p className="text-gray-500">No messages yet</p>
             </div>
           </div>
         )}
@@ -538,7 +528,7 @@ export default function App() {
       
       {/* Floating Cart Button for Restaurant View */}
       {view === 'restaurant' && cart.length > 0 && (
-        <div className="fixed bottom-4 left-4 right-4 z-50">
+        <div className="fixed bottom-4 left-4 right-4 z-50 md:bottom-24">
           <button onClick={() => setView('cart')} className="w-full bg-orange-600 text-white p-4 rounded-xl shadow-xl flex justify-between items-center font-bold">
             <div className="flex items-center gap-2">
               <div className="bg-white/20 px-2 py-1 rounded text-xs">{cart.reduce((a,b) => a+b.quantity, 0)} items</div>
@@ -549,7 +539,25 @@ export default function App() {
         </div>
       )}
 
-      {view !== 'restaurant' && view !== 'success' && <BottomNav />}
+      {/* Bottom Navigation - Hidden on restaurant/success views */}
+      {view !== 'restaurant' && view !== 'success' && <BottomNav view={view} setView={setView} cartCount={cart.length} />}
+
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <AuthModal 
+          onClose={() => setShowAuthModal(false)}
+          onAuthSuccess={() => setShowAuthModal(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// --- WRAPPED WITH AUTH PROVIDER ---
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
