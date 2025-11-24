@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, ShoppingBag, MapPin, Star, Clock, Plus, Minus, ChevronLeft, X, Trash2, Receipt, AlertCircle, Loader } from 'lucide-react';
+import { Search, ShoppingBag, MapPin, Star, Clock, Plus, Minus, ChevronLeft, X, Trash2, Receipt, AlertCircle, Loader, Package } from 'lucide-react';
 import { API_ENDPOINTS, handleApiResponse, handleApiError, logApiCall } from './config/api';
 import { AuthProvider, AuthContext } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
@@ -9,11 +9,17 @@ import ProfileView from './components/Profile/ProfileView';
 import WalletView from './components/Wallet/WalletView';
 import TransactionHistory from './components/Transactions/TransactionHistory';
 import CoinDisplay from './components/Wallet/CoinDisplay';
+import DeliveryToggle from './components/Address/DeliveryToggle';
+import AddressSelector from './components/Address/AddressSelector';
+import SavedAddresses from './components/Address/SavedAddresses';
+
 
 // --- MAIN APP COMPONENT ---
 function AppContent() {
   // STATE
   const { isAuthenticated, user } = useAuth();
+  const [deliveryType, setDeliveryType] = useState('delivery');
+  const [selectedAddress, setSelectedAddress] = useState(null);
   const [view, setView] = useState('home');
   const [activeRestaurant, setActiveRestaurant] = useState(null);
   const [cart, setCart] = useState([]);
@@ -223,41 +229,35 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl md:border-x md:border-gray-200 relative overflow-hidden">
       
-      {/* TOP BAR - Updated: Removed "Delivering to", Added Coins & Profile */}
-      <div className="bg-orange-600 text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-40">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex-1">
-            {view === 'home' && (
-              <h1 className="text-2xl font-bold">Hungr</h1>
-            )}
+      {/* TOP BAR - REDESIGNED: Search bar on top row with Coins & Profile icons, "Hungr" title removed */}
+      <div className="bg-orange-600 text-white p-3 rounded-b-3xl shadow-lg sticky top-0 z-40">
+        <div className="flex items-center justify-between gap-2">
+          {/* Search Bar - Takes most of the space */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+            <input 
+              type="text"
+              placeholder={view === 'home' ? "What are you craving?" : ""}
+              className="w-full py-2 pl-9 pr-3 rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm shadow-inner"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={view !== 'home'}
+            />
           </div>
           
-          {/* Right Section: Coins + Profile */}
-          <div className="flex items-center gap-4">
+          {/* Right Section: Coins + Profile - UPDATED: Reduced gap, on same row as search */}
+          <div className="flex items-center gap-2">
             <CoinDisplay onClick={() => setView('wallet')} />
             
             <button
               onClick={() => isAuthenticated ? setView('profile') : setShowAuthModal(true)}
-              className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-sm hover:bg-white/30 transition cursor-pointer"
-              title={isAuthenticated ? 'Profile' : 'Login/Signup'}
+              className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-xs hover:bg-white/30 transition cursor-pointer flex-shrink-0"
+              title={isAuthenticated ? 'Profile' : 'Login'}
             >
-              {isAuthenticated && user ? user.username?.charAt(0).toUpperCase() : 'G'}
+              {isAuthenticated && user ? user.username?.charAt(0).toUpperCase() : 'LOGIN'}
             </button>
           </div>
         </div>
-        
-        {view === 'home' && (
-          <div className="relative">
-            <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-            <input 
-              type="text"
-              placeholder="What are you craving?"
-              className="w-full py-2.5 pl-10 pr-4 rounded-xl text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm shadow-inner"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        )}
       </div>
 
       {/* CONTENT AREA */}
@@ -268,26 +268,23 @@ function AppContent() {
           <>
             {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
-            {/* Categories - Updated Design */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              {[
-                { label: 'Food', emoji: '🍔', bg: 'from-red-400 to-red-500' },
-                { label: 'Pabili', emoji: '🛒', bg: 'from-blue-400 to-blue-500' },
-                { label: 'Stores', emoji: '🏪', bg: 'from-purple-400 to-purple-500' },
-                { label: 'Ride', emoji: '🚗', bg: 'from-green-400 to-green-500' }
-              ].map((cat) => (
-                <div
-                  key={cat.label}
-                  className={`flex flex-col items-center gap-2 cursor-pointer hover:opacity-90 hover:scale-105 transition-all active:scale-95`}
-                >
-                  <div className={`w-14 h-14 bg-gradient-to-br ${cat.bg} rounded-2xl flex items-center justify-center text-2xl shadow-lg hover:shadow-xl transition-shadow text-white`}>
-                    {cat.emoji}
-                  </div>
-                  <span className="text-xs font-medium text-gray-600">{cat.label}</span>
-                </div>
-              ))}
-            </div>
-
+            {/* Categories - RESTORED: Original Phase 1 sizes (compact) */}
+            <div className="grid grid-cols-4 gap-4 mb-6 place-items-center">
+  {[
+    { label: 'Food', emoji: '🍔', bg: 'from-red-400 to-red-500' },
+    { label: 'Pabili', emoji: '🛒', bg: 'from-blue-400 to-blue-500' },
+    { label: 'Stores', emoji: '🏪', bg: 'from-purple-400 to-purple-500' },
+    { label: 'Ride', emoji: '🚗', bg: 'from-green-400 to-green-500' }
+  ].map((cat) => (
+    <button
+      key={cat.label}
+      className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:opacity-90 hover:scale-105 transition-all active:scale-95 bg-gradient-to-br ${cat.bg} rounded-2xl p-2 shadow-lg hover:shadow-xl transition-shadow text-white w-14 h-14`}
+    >
+      <div className="text-lg">{cat.emoji}</div>
+      <span className="text-xs font-bold text-center leading-none">{cat.label}</span>
+    </button>
+  ))}
+</div>
             {/* Featured Section */}
             <div className="flex justify-between items-end mb-3">
               <h2 className="text-lg font-bold text-gray-800">Featured</h2>
@@ -393,6 +390,8 @@ function AppContent() {
         )}
 
         {/* CART VIEW */}
+        
+        {/* CART VIEW - WITH ADDRESS SELECTION (Phase 2B) */}
         {view === 'cart' && (
           <div className="animate-in slide-in-from-right-8 duration-300">
             <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
@@ -409,6 +408,40 @@ function AppContent() {
               </div>
             ) : (
               <>
+                {/* Delivery/Pickup Toggle - NEW for Phase 2B */}
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setDeliveryType('delivery')}
+                    className={`flex-1 py-2.5 px-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition ${
+                      deliveryType === 'delivery'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <MapPin size={16} />
+                    Delivery
+                  </button>
+                  <button
+                    onClick={() => setDeliveryType('pickup')}
+                    className={`flex-1 py-2.5 px-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition ${
+                      deliveryType === 'pickup'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Package size={16} />
+                    Pickup
+                  </button>
+                </div>
+
+                {/* Address Selection - NEW for Phase 2B */}
+                {deliveryType === 'delivery' && (
+                  <div className="mb-6 p-4 bg-orange-50 rounded-xl border border-orange-200">
+                    <h3 className="font-bold text-sm text-gray-900 mb-3">Delivery Address</h3>
+                    <AddressSelector onAddressSelect={(addr) => setSelectedAddress(addr)} />
+                  </div>
+                )}
+
                 <div className="bg-orange-50 p-3 rounded-lg text-sm text-orange-800 mb-4 border border-orange-100 flex items-center gap-2">
                   <MapPin size={14} /> Ordering from <b>{cart[0].restaurantName}</b>
                 </div>
@@ -455,17 +488,23 @@ function AppContent() {
                     </div>
                     <div className="flex justify-between text-sm text-gray-500">
                       <span>Delivery Fee</span>
-                      <span>₱49</span>
+                      <span>₱{deliveryType === 'pickup' ? '0' : '49'}</span>
                     </div>
                     <div className="flex justify-between text-lg font-bold text-gray-900 pt-2">
                       <span>Total</span>
-                      <span>₱{(cartTotal + 49).toFixed(2)}</span>
+                      <span>₱{(cartTotal + (deliveryType === 'pickup' ? 0 : 49)).toFixed(2)}</span>
                     </div>
                   </div>
 
+                  {selectedAddress && deliveryType === 'delivery' && (
+                    <div className="bg-green-50 border border-green-200 p-3 rounded-lg text-xs text-green-700">
+                      ✓ Delivery to: <b>{selectedAddress.address}</b>
+                    </div>
+                  )}
+
                   <button 
                     onClick={placeOrder} 
-                    disabled={orderLoading}
+                    disabled={orderLoading || (deliveryType === 'delivery' && !selectedAddress)}
                     className="w-full bg-orange-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-orange-200 mt-4 active:scale-95 transition flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {orderLoading ? (
@@ -525,6 +564,11 @@ function AppContent() {
         )}
 
       </div>
+
+	  {/* ADDRESSES VIEW - Phase 2B */}
+        {view === 'addresses' && (
+          <SavedAddresses />
+        )}
       
       {/* Floating Cart Button for Restaurant View */}
       {view === 'restaurant' && cart.length > 0 && (

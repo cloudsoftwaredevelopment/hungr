@@ -1,7 +1,7 @@
-/**
- * ProfileView.jsx
- * User profile page with settings and logout
- */
+// ========================================
+// FILE 3: UPDATE src/components/Profile/ProfileView.jsx
+// ========================================
+// Find the ProfileView component and update the menuItems section:
 
 import React from 'react';
 import { ChevronRight, LogOut, MapPin, Phone, Mail } from 'lucide-react';

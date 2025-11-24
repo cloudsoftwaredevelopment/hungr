@@ -624,6 +624,289 @@ app.post('/api/orders', (req, res) => {
     });
 });
 
+// ==========================================
+// ADDRESS ENDPOINTS (Phase 2B)
+// ==========================================
+
+// 14. Get All Addresses for User (Protected)
+app.get('/api/users/addresses', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+
+    console.log('[ADDRESSES] Fetching addresses for user:', userId);
+
+    const query = 'SELECT id, label, address, latitude, longitude, is_default, created_at FROM user_addresses WHERE user_id = ? ORDER BY is_default DESC, created_at ASC';
+    
+    db.query(query, [userId], (err, results) => {
+        if (err) {
+            return sendError(res, 500, 'Failed to fetch addresses', 'DB_ERROR', err);
+        }
+
+        sendSuccess(res, results || []);
+    });
+});
+
+// 15. Create New Address (Protected)
+app.post('/api/users/addresses', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    const { label, address, latitude, longitude, is_default } = req.body;
+
+    console.log('[ADDRESSES] Creating new address for user:', userId, { label, address });
+
+    // Validation
+    if (!label || !address) {
+        return sendError(res, 400, 'Label and address are required', 'MISSING_FIELDS');
+    }
+
+    if (!latitude || !longitude) {
+        return sendError(res, 400, 'Latitude and longitude are required', 'MISSING_COORDS');
+    }
+
+    // Check max 5 addresses per user
+    const countQuery = 'SELECT COUNT(*) as count FROM user_addresses WHERE user_id = ?';
+    db.query(countQuery, [userId], (err, results) => {
+        if (err) {
+            return sendError(res, 500, 'Failed to check address count', 'DB_ERROR', err);
+        }
+
+        if (results[0].count >= 5) {
+            return sendError(res, 400, 'Maximum 5 addresses allowed', 'MAX_ADDRESSES_REACHED');
+        }
+
+        // Insert address
+        const insertQuery = `
+            INSERT INTO user_addresses (user_id, label, address, latitude, longitude, is_default)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `;
+
+        db.query(insertQuery, [userId, label, address, latitude, longitude, is_default ? 1 : 0], (err, result) => {
+            if (err) {
+                if (err.code === 'ER_DUP_ENTRY') {
+                    return sendError(res, 400, 'Address label already exists', 'DUPLICATE_LABEL', err);
+                }
+                return sendError(res, 500, 'Failed to create address', 'DB_ERROR', err);
+            }
+
+            console.log('[ADDRESSES] Address created with ID:', result.insertId);
+
+            // If set as default, unset others
+            if (is_default) {
+                const updateDefaultQuery = 'UPDATE user_addresses SET is_default = 0 WHERE user_id = ? AND id != ?';
+                db.query(updateDefaultQuery, [userId, result.insertId], (err) => {
+                    if (err) console.error('[ADDRESS DEFAULT ERROR]', err.message);
+                });
+            }
+
+            sendSuccess(res, {
+                id: result.insertId,
+                label,
+                address,
+                latitude,
+                longitude,
+                is_default: is_default ? 1 : 0
+            }, 'Address created successfully', 201);
+        });
+    });
+});
+
+// 16. Update Address (Protected)
+app.put('/api/users/addresses/:id', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    const addressId = req.params.id;
+    const { label, address, latitude, longitude, is_default } = req.body;
+
+    console.log('[ADDRESSES] Updating address:', addressId, 'for user:', userId);
+
+    // Validation
+    if (!label || !address) {
+        return sendError(res, 400, 'Label and address are required', 'MISSING_FIELDS');
+    }
+
+    // Check if address belongs to user
+    const checkQuery = 'SELECT id FROM user_addresses WHERE id = ? AND user_id = ?';
+    db.query(checkQuery, [addressId, userId], (err, results) => {
+        if (err) {
+            return sendError(res, 500, 'Failed to check address', 'DB_ERROR', err);
+        }
+
+        if (!results || results.length === 0) {
+            return sendError(res, 404, 'Address not found', 'ADDRESS_NOT_FOUND');
+        }
+
+        // Update address
+        const updateQuery = `
+            UPDATE user_addresses 
+            SET label = ?, address = ?, latitude = ?, longitude = ?, is_default = ?
+            WHERE id = ? AND user_id = ?
+        `;
+
+        db.query(updateQuery, [label, address, latitude, longitude, is_default ? 1 : 0, addressId, userId], (err) => {
+            if (err) {
+                if (err.code === 'ER_DUP_ENTRY') {
+                    return sendError(res, 400, 'Address label already exists', 'DUPLICATE_LABEL', err);
+                }
+                return sendError(res, 500, 'Failed to update address', 'DB_ERROR', err);
+            }
+
+            // If set as default, unset others
+            if (is_default) {
+                const updateDefaultQuery = 'UPDATE user_addresses SET is_default = 0 WHERE user_id = ? AND id != ?';
+                db.query(updateDefaultQuery, [userId, addressId], (err) => {
+                    if (err) console.error('[ADDRESS DEFAULT ERROR]', err.message);
+                });
+            }
+
+            console.log('✅ Address updated successfully');
+            sendSuccess(res, { id: addressId, label, address, latitude, longitude, is_default: is_default ? 1 : 0 });
+        });
+    });
+});
+
+// 17. Delete Address (Protected)
+app.delete('/api/users/addresses/:id', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    const addressId = req.params.id;
+
+    console.log('[ADDRESSES] Deleting address:', addressId, 'for user:', userId);
+
+    // Check if address belongs to user
+    const checkQuery = 'SELECT id FROM user_addresses WHERE id = ? AND user_id = ?';
+    db.query(checkQuery, [addressId, userId], (err, results) => {
+        if (err) {
+            return sendError(res, 500, 'Failed to check address', 'DB_ERROR', err);
+        }
+
+        if (!results || results.length === 0) {
+            return sendError(res, 404, 'Address not found', 'ADDRESS_NOT_FOUND');
+        }
+
+        // Delete address
+        const deleteQuery = 'DELETE FROM user_addresses WHERE id = ? AND user_id = ?';
+        db.query(deleteQuery, [addressId, userId], (err) => {
+            if (err) {
+                return sendError(res, 500, 'Failed to delete address', 'DB_ERROR', err);
+            }
+
+            console.log('✅ Address deleted successfully');
+            sendSuccess(res, { id: addressId }, 'Address deleted successfully');
+        });
+    });
+});
+
+// 18. Set Default Address (Protected)
+app.post('/api/users/addresses/:id/default', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    const addressId = req.params.id;
+
+    console.log('[ADDRESSES] Setting default address:', addressId, 'for user:', userId);
+
+    // Check if address belongs to user
+    const checkQuery = 'SELECT id FROM user_addresses WHERE id = ? AND user_id = ?';
+    db.query(checkQuery, [addressId, userId], (err, results) => {
+        if (err) {
+            return sendError(res, 500, 'Failed to check address', 'DB_ERROR', err);
+        }
+
+        if (!results || results.length === 0) {
+            return sendError(res, 404, 'Address not found', 'ADDRESS_NOT_FOUND');
+        }
+
+        // Unset all defaults for user
+        const unsetQuery = 'UPDATE user_addresses SET is_default = 0 WHERE user_id = ?';
+        db.query(unsetQuery, [userId], (err) => {
+            if (err) {
+                return sendError(res, 500, 'Failed to unset defaults', 'DB_ERROR', err);
+            }
+
+            // Set this one as default
+            const setQuery = 'UPDATE user_addresses SET is_default = 1 WHERE id = ? AND user_id = ?';
+            db.query(setQuery, [addressId, userId], (err) => {
+                if (err) {
+                    return sendError(res, 500, 'Failed to set default', 'DB_ERROR', err);
+                }
+
+                console.log('✅ Default address set successfully');
+                sendSuccess(res, { id: addressId }, 'Default address set successfully');
+            });
+        });
+    });
+});
+
+// 19. Reverse Geocode (Get Address from Coordinates) - Public
+app.get('/api/geocode/reverse', async (req, res) => {
+    const { lat, lon } = req.query;
+
+    console.log('[GEOCODE] Reverse geocoding:', { lat, lon });
+
+    if (!lat || !lon) {
+        return sendError(res, 400, 'Latitude and longitude are required', 'MISSING_COORDS');
+    }
+
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&accept-language=en`;
+        
+        const response = await fetch(url, {
+            headers: { 'User-Agent': 'HungrApp/1.0' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Nominatim API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        console.log('[GEOCODE] Result:', data.address?.road || data.display_name);
+
+        sendSuccess(res, {
+            address: data.address?.road ? `${data.address.road}, ${data.address.city || data.address.town}` : data.display_name,
+            display_name: data.display_name,
+            latitude: data.lat,
+            longitude: data.lon,
+            address_components: data.address
+        });
+    } catch (err) {
+        console.error('[GEOCODE ERROR]', err.message);
+        sendError(res, 500, 'Reverse geocoding failed', 'GEOCODE_ERROR');
+    }
+});
+
+// 20. Search Addresses (Nominatim) - Public
+app.get('/api/geocode/search', async (req, res) => {
+    const { q, limit = 5 } = req.query;
+
+    console.log('[GEOCODE] Searching addresses:', q);
+
+    if (!q || q.length < 2) {
+        return sendError(res, 400, 'Search query must be at least 2 characters', 'INVALID_QUERY');
+    }
+
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=${limit}&accept-language=en`;
+        
+        const response = await fetch(url, {
+            headers: { 'User-Agent': 'HungrApp/1.0' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Nominatim API error: ${response.status}`);
+        }
+
+        const results = await response.json();
+
+        console.log('[GEOCODE] Found', results.length, 'results');
+
+        sendSuccess(res, results.map(result => ({
+            address: result.display_name,
+            latitude: result.lat,
+            longitude: result.lon,
+            type: result.type,
+            importance: result.importance
+        })));
+    } catch (err) {
+        console.error('[GEOCODE ERROR]', err.message);
+        sendError(res, 500, 'Address search failed', 'GEOCODE_ERROR');
+    }
+});
+
 // 404 Handler
 app.use((req, res) => {
     res.status(404).json({

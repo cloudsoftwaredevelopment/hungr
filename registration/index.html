@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HUNGR Merchant Seminar Registration</title>
+    <style>
+        :root {
+            --primary-color: #d62828; /* Matching the reddish tone in the logo */
+            --dark-text: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* Main container for the form card */
+        .registration-card {
+            /* Utilizing the provided image as the background */
+            background-image: url('image_0.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 100%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        /* An overlay to ensure text readability over the background image */
+        .form-overlay {
+            background-color: rgba(255, 255, 255, 0.92); /* White with high opacity */
+            padding: 40px;
+            height: 100%;
+        }
+
+        .form-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .form-header h1 {
+            margin: 0;
+            color: var(--primary-color);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        
+        .form-header p {
+            color: var(--dark-text);
+            margin-top: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--dark-text);
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            box-sizing: border-box; /* Important for padding not to affect width */
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(45deg, #d62828, #ff7f50); /* Gradient based on logo colors */
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(214, 40, 40, 0.4);
+        }
+
+        /* --- Modal Styles --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            transform: scale(0.7);
+            transition: transform 0.3s ease;
+        }
+        
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-content h2 {
+            color: var(--primary-color);
+            margin-top: 0;
+        }
+        
+        .success-icon {
+            font-size: 50px;
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+
+        .btn-close-modal {
+            margin-top: 20px;
+            padding: 10px 25px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="registration-card">
+        <div class="form-overlay">
+            <div class="form-header">
+                <h1>Hungr Seminar</h1>
+                <p>Early Merchant Registration Invitation</p>
+            </div>
+
+            <form id="merchantForm">
+                <div class="form-group">
+                    <label for="fullName">Full Name</label>
+                    <input type="text" id="fullName" name="fullName" required placeholder="Jane Doe">
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="jane@restaurant.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="mobile">Mobile Number</label>
+                    <input type="tel" id="mobile" name="mobile" required placeholder="0917 123 4567">
+                </div>
+
+                <div class="form-group">
+                    <label for="restaurantName">Restaurant Name</label>
+                    <input type="text" id="restaurantName" name="restaurantName" required placeholder="Jane's Bistro">
+                </div>
+
+                <button type="submit" class="btn-submit">Secure My Spot</button>
+            </form>
+        </div>
+    </div>
+
+
+    <div class="modal-overlay" id="thankYouModal">
+        <div class="modal-content">
+            <div class="success-icon">✓</div>
+            <h2>Thank You!</h2>
+            <p>Your registration has been received.</p>
+            <p style="font-weight: bold; font-size: 1.2em; color: var(--primary-color);">See you soon!</p>
+            <button class="btn-close-modal" id="closeModalBtn">Close</button>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('merchantForm');
+            const modal = document.getElementById('thankYouModal');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+
+            // Function to open modal
+            const openModal = () => {
+                modal.classList.add('active');
+            }
+
+            // Function to close modal
+            const closeModal = () => {
+                modal.classList.remove('active');
+            }
+
+            closeModalBtn.addEventListener('click', closeModal);
+            
+            // Close modal if clicking outside the content box
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+
+
+            form.addEventListener('submit', function(e) {
+                e.preventDefault(); // Stop the standard form submission
+
+                const submitBtn = form.querySelector('.btn-submit');
+                const originalBtnText = submitBtn.innerText;
+                submitBtn.innerText = 'Submitting...';
+                submitBtn.disabled = true;
+
+                // Gather form data
+                const formData = new FormData(form);
+
+                // Send data to PHP backend using Fetch API
+                fetch('submit.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        form.reset(); // Clear the inputs
+                        openModal(); // Show the thank you pop-up
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An unexpected error occurred. Please try again.');
+                })
+                .finally(() => {
+                    // Reset button state
+                    submitBtn.innerText = originalBtnText;
+                    submitBtn.disabled = false;
+                });
+            });
+        });
+    </script>
+
+</body>
+</html>
