@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, ShoppingBag, MapPin, Star, Clock, Plus, Minus, ChevronLeft, X, Trash2, Receipt, AlertCircle, Loader, Package } from 'lucide-react';
-import { API_ENDPOINTS, handleApiResponse, handleApiError, logApiCall } from './config/api';
+import { API_ENDPOINTS, handleApiResponse, handleApiError, logApiCall, fetchWithAuth } from './config/api';
 import { AuthProvider, AuthContext } from './contexts/AuthContext';
 import { useAuth } from './hooks/useAuth';
 import AuthModal from './components/Auth/AuthModal';
@@ -12,7 +12,6 @@ import CoinDisplay from './components/Wallet/CoinDisplay';
 import DeliveryToggle from './components/Address/DeliveryToggle';
 import AddressSelector from './components/Address/AddressSelector';
 import SavedAddresses from './components/Address/SavedAddresses';
-
 
 // --- MAIN APP COMPONENT ---
 function AppContent() {
@@ -32,11 +31,23 @@ function AppContent() {
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [addresses, setAddresses] = useState([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+
+  // Get token from session storage
+  const getAuthToken = () => sessionStorage.getItem('accessToken');
 
   // INITIAL LOAD - Fetch restaurants on mount
   useEffect(() => {
     fetchRestaurants();
   }, []);
+
+  // FETCH USER ADDRESSES WHEN AUTHENTICATED
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchUserAddresses();
+    }
+  }, [isAuthenticated]);
 
   // FETCH RESTAURANTS FROM API
   const fetchRestaurants = async () => {
@@ -59,6 +70,32 @@ function AppContent() {
       console.error('Fetch restaurants error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // FETCH USER ADDRESSES
+  const fetchUserAddresses = async () => {
+    if (!isAuthenticated) return;
+    
+    setAddressesLoading(true);
+    try {
+      const token = getAuthToken();
+      const response = await fetchWithAuth(API_ENDPOINTS.USER_ADDRESSES, {}, token);
+      const data = await handleApiResponse(response);
+      
+      if (data.success) {
+        setAddresses(data.data);
+        // Set default address if available
+        const defaultAddr = data.data.find(addr => addr.is_default);
+        if (defaultAddr) {
+          setSelectedAddress(defaultAddr);
+        }
+      }
+    } catch (err) {
+      console.error('Fetch addresses error:', err);
+      // Don't show error to user for addresses, just silently fail
+    } finally {
+      setAddressesLoading(false);
     }
   };
 
@@ -154,13 +191,18 @@ function AppContent() {
       return;
     }
 
+    if (deliveryType === 'delivery' && !selectedAddress) {
+      setOrderError('Please select a delivery address');
+      return;
+    }
+
     setOrderLoading(true);
     setOrderError(null);
 
     try {
       const restaurantId = cart[0].restaurantId;
       const orderPayload = {
-        userId: user.id,
+        userId: user?.id,
         restaurantId: restaurantId,
         items: cart.map(item => ({
           id: item.id,
@@ -389,8 +431,6 @@ function AppContent() {
           </div>
         )}
 
-        {/* CART VIEW */}
-        
         {/* CART VIEW - WITH ADDRESS SELECTION (Phase 2B) */}
         {view === 'cart' && (
           <div className="animate-in slide-in-from-right-8 duration-300">
@@ -438,7 +478,12 @@ function AppContent() {
                 {deliveryType === 'delivery' && (
                   <div className="mb-6 p-4 bg-orange-50 rounded-xl border border-orange-200">
                     <h3 className="font-bold text-sm text-gray-900 mb-3">Delivery Address</h3>
-                    <AddressSelector onAddressSelect={(addr) => setSelectedAddress(addr)} />
+                    <AddressSelector 
+                      onAddressSelect={(addr) => setSelectedAddress(addr)} 
+                      selectedAddress={selectedAddress}
+                      isAuthenticated={isAuthenticated}
+                      onAuthRequired={() => setShowAuthModal(true)}
+                    />
                   </div>
                 )}
 
@@ -565,9 +610,15 @@ function AppContent() {
 
       </div>
 
-	  {/* ADDRESSES VIEW - Phase 2B */}
+          {/* ADDRESSES VIEW - Phase 2B */}
         {view === 'addresses' && (
-          <SavedAddresses />
+          <SavedAddresses 
+            addresses={addresses}
+            loading={addressesLoading}
+            onRefresh={fetchUserAddresses}
+            isAuthenticated={isAuthenticated}
+            onAuthRequired={() => setShowAuthModal(true)}
+          />
         )}
       
       {/* Floating Cart Button for Restaurant View */}

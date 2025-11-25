@@ -34,7 +34,7 @@ export const API_ENDPOINTS = {
   USER_ADDRESSES_DEFAULT: (addressId) => `${API_BASE_URL}/api/users/addresses/${addressId}/default`,
   GEOCODE_SEARCH: `${API_BASE_URL}/api/geocode/search`,
   GEOCODE_REVERSE: `${API_BASE_URL}/api/geocode/reverse`,
-	
+
   // Restaurants
   RESTAURANTS: `${API_BASE_URL}/api/restaurants`,
   RESTAURANT_MENU: (restaurantId) => `${API_BASE_URL}/api/restaurants/${restaurantId}/menu`,
@@ -124,7 +124,7 @@ export const fetchWithAuth = async (endpoint, options = {}, token) => {
 
       if (refreshResponse.ok) {
         const refreshData = await refreshResponse.json();
-        if (refreshData.success) {
+        if (refreshData.success && refreshData.data?.accessToken) {
           const newToken = refreshData.data.accessToken;
           sessionStorage.setItem('accessToken', newToken);
           
