@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Navigation, Search, Loader, AlertCircle, X, Clock, DollarSign, ChevronRight } from 'lucide-react';
-import { API_ENDPOINTS, handleApiResponse, handleApiError, logApiCall } from '../../config/api';
+import { 
+  Search, MapPin, Loader, Navigation, ChevronRight, AlertCircle, X 
+} from 'lucide-react';
 
-export default function RidesView({ 
-  setView, 
-  userLocation, 
-  onLocationUpdate,
-  setRideError,
-  rideError,
-  rideLoading
-}) {
+const API_URL = '/api';
+
+const RidesView = ({ setView }) => { 
   // State
-  const [currentLocation, setCurrentLocation] = useState(userLocation || null);
+  const [currentLocation, setCurrentLocation] = useState(null);
   const [destinationQuery, setDestinationQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [selectedDestination, setSelectedDestination] = useState(null);
@@ -20,6 +16,7 @@ export default function RidesView({
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [estimatedFare, setEstimatedFare] = useState(null);
   const [distance, setDistance] = useState(null);
+  const [rideError, setRideError] = useState(null);
   const searchTimeoutRef = useRef(null);
 
   // Get user's current location on component mount
@@ -45,13 +42,10 @@ export default function RidesView({
         console.log(`📍 Location found: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
 
         try {
-          // Reverse geocode to get address
-          logApiCall('GET', API_ENDPOINTS.GEOCODE_REVERSE);
-          
           const response = await fetch(
-            `${API_ENDPOINTS.GEOCODE_REVERSE}?lat=${latitude}&lon=${longitude}`
+            `${API_URL}/geocode/reverse?lat=${latitude}&lon=${longitude}`
           );
-          const data = await handleApiResponse(response);
+          const data = await response.json();
 
           const locationData = {
             lat: latitude,
@@ -60,7 +54,6 @@ export default function RidesView({
           };
 
           setCurrentLocation(locationData);
-          if (onLocationUpdate) onLocationUpdate(locationData);
           setLoadingLocation(false);
         } catch (err) {
           console.error('Reverse geocode error:', err);
@@ -77,16 +70,10 @@ export default function RidesView({
       },
       (error) => {
         console.error('Geolocation error:', error);
-        
         let errorMsg = 'Unable to access your location';
         if (error.code === error.PERMISSION_DENIED) {
-          errorMsg = 'Location access denied. Please enable location services in your browser settings.';
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          errorMsg = 'Location information unavailable.';
-        } else if (error.code === error.TIMEOUT) {
-          errorMsg = 'Location request timeout.';
+          errorMsg = 'Location access denied. Please enable location services.';
         }
-
         setRideError(errorMsg);
         setLoadingLocation(false);
       }
@@ -104,23 +91,19 @@ export default function RidesView({
     setSearchError(null);
 
     try {
-      logApiCall('GET', API_ENDPOINTS.GEOCODE_SEARCH);
-      
       const response = await fetch(
-        `${API_ENDPOINTS.GEOCODE_SEARCH}?q=${encodeURIComponent(query)}&limit=5`
+        `${API_URL}/geocode/search?q=${encodeURIComponent(query)}&limit=5`
       );
-      const data = await handleApiResponse(response);
+      const data = await response.json();
 
       if (data.success && Array.isArray(data.data)) {
         setSuggestions(data.data);
-        console.log(`Found ${data.data.length} suggestions for "${query}"`);
       } else {
         setSuggestions([]);
       }
     } catch (err) {
       console.error('Search error:', err);
-      const errorMsg = handleApiError(err);
-      setSearchError(errorMsg);
+      setSearchError('Search failed');
       setSuggestions([]);
     } finally {
       setSearching(false);
@@ -134,12 +117,10 @@ export default function RidesView({
     setEstimatedFare(null);
     setDistance(null);
 
-    // Clear previous timeout
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    // Set new timeout (debounce 300ms)
     searchTimeoutRef.current = setTimeout(() => {
       searchDestination(value);
     }, 300);
@@ -158,7 +139,6 @@ export default function RidesView({
     setSuggestions([]);
     setSearchError(null);
 
-    // Calculate distance and fare
     if (currentLocation) {
       calculateDistanceAndFare(currentLocation, destination);
     }
@@ -188,31 +168,24 @@ export default function RidesView({
       minimum: Math.ceil(fare),
       maximum: Math.ceil(fare * 1.2)
     });
-
-    console.log(`Distance: ${calculatedDistance.toFixed(1)} km, Fare: ₱${fare.toFixed(2)}`);
   };
 
-  // Refresh current location
   const handleRefreshLocation = () => {
     setCurrentLocation(null);
     getUserLocation();
   };
 
   return (
-    <div className="pb-20">
+    <div className="pb-20 animate-in slide-in-from-right">
       <h2 className="text-xl font-bold mb-6">Book a Ride</h2>
 
-      {/* Error Banner */}
       {rideError && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex items-start gap-3">
           <AlertCircle size={18} className="text-red-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-sm text-red-700 font-medium">{rideError}</p>
           </div>
-          <button 
-            onClick={() => setRideError(null)}
-            className="text-red-400 hover:text-red-600"
-          >
+          <button onClick={() => setRideError(null)} className="text-red-400 hover:text-red-600">
             <X size={16} />
           </button>
         </div>
@@ -229,13 +202,8 @@ export default function RidesView({
             onClick={handleRefreshLocation}
             disabled={loadingLocation}
             className="text-blue-600 hover:text-blue-700 disabled:opacity-50"
-            title="Refresh location"
           >
-            {loadingLocation ? (
-              <Loader size={16} className="animate-spin" />
-            ) : (
-              <Navigation size={16} />
-            )}
+            {loadingLocation ? <Loader size={16} className="animate-spin" /> : <Navigation size={16} />}
           </button>
         </div>
 
@@ -252,20 +220,11 @@ export default function RidesView({
                 {currentLocation.lat.toFixed(4)}, {currentLocation.lon.toFixed(4)}
               </p>
             </div>
-            <button
-              onClick={handleRefreshLocation}
-              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-            >
-              Update location
-            </button>
           </div>
         ) : (
           <div className="text-center py-4">
             <p className="text-sm text-gray-500 mb-3">Unable to get your location</p>
-            <button
-              onClick={handleRefreshLocation}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700"
-            >
+            <button onClick={handleRefreshLocation} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700">
               Try Again
             </button>
           </div>
@@ -279,7 +238,6 @@ export default function RidesView({
           <h3 className="font-bold text-gray-900">Where to?</h3>
         </div>
 
-        {/* Search Input */}
         <div className="relative">
           <input
             type="text"
@@ -303,20 +261,12 @@ export default function RidesView({
             </button>
           )}
 
-          {/* Loading indicator */}
           {searching && (
             <div className="absolute right-3 top-3">
               <Loader size={16} className="animate-spin text-orange-600" />
             </div>
           )}
         </div>
-
-        {/* Search Error */}
-        {searchError && (
-          <div className="mt-3 p-2 bg-red-50 rounded-lg border border-red-200">
-            <p className="text-xs text-red-600">{searchError}</p>
-          </div>
-        )}
 
         {/* Suggestions Dropdown */}
         {suggestions.length > 0 && (
@@ -342,24 +292,13 @@ export default function RidesView({
             ))}
           </div>
         )}
-
-        {/* No results message */}
-        {destinationQuery.length >= 2 && !searching && suggestions.length === 0 && !searchError && (
-          <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-200 text-center">
-            <p className="text-sm text-gray-500">No addresses found</p>
-            <p className="text-xs text-gray-400 mt-1">Try a different search</p>
-          </div>
-        )}
       </div>
 
       {/* ROUTE SUMMARY SECTION */}
       {selectedDestination && (
         <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-200 p-4 mb-4">
           <h3 className="font-bold text-gray-900 mb-4">Trip Summary</h3>
-
-          {/* Route details */}
           <div className="space-y-3 mb-4">
-            {/* From */}
             <div className="flex gap-3">
               <div className="flex flex-col items-center">
                 <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
@@ -370,8 +309,6 @@ export default function RidesView({
                 <p className="text-sm font-medium text-gray-900">{currentLocation.address}</p>
               </div>
             </div>
-
-            {/* To */}
             <div className="flex gap-3">
               <div className="flex flex-col items-center">
                 <div className="w-3 h-3 bg-orange-600 rounded-full"></div>
@@ -383,7 +320,6 @@ export default function RidesView({
             </div>
           </div>
 
-          {/* Distance and Fare */}
           {distance && estimatedFare && (
             <div className="grid grid-cols-2 gap-3 pt-3 border-t border-blue-200">
               <div className="bg-white rounded-lg p-3">
@@ -404,30 +340,15 @@ export default function RidesView({
       {/* BOOK RIDE BUTTON */}
       {currentLocation && selectedDestination && estimatedFare && (
         <button
-          onClick={() => {
-            // Will implement ride confirmation in next phase
-            console.log('Book ride:', {
-              from: currentLocation,
-              to: selectedDestination,
-              fare: estimatedFare,
-              distance: distance
-            });
-            // setView('ride-confirm');
-          }}
-          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-between px-6 transition"
+          onClick={() => alert("Ride booking feature coming soon!")}
+          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-between px-6 transition active:scale-95"
         >
           <span>Book Ride</span>
           <span className="text-lg">₱{estimatedFare.minimum}</span>
         </button>
       )}
-
-      {/* Help text */}
-      {!selectedDestination && currentLocation && (
-        <div className="text-center py-6 text-gray-500">
-          <MapPin size={32} className="mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Enter your destination to continue</p>
-        </div>
-      )}
     </div>
   );
-}
+};
+
+export default RidesView;

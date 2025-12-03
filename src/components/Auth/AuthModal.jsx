@@ -1,59 +1,39 @@
-/**
- * AuthModal.jsx
- * Authentication modal with login/signup toggle
- */
-
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import LoginForm from './LoginForm';
-import SignupForm from './SignupForm';
+import { useAuth } from '../../contexts/AuthContext';
 
-export default function AuthModal({ onClose, onAuthSuccess }) {
+const AuthModal = ({ onClose }) => {
   const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const { login } = useAuth();
+  const [error, setError] = useState('');
 
-  const handleAuthSuccess = () => {
-    onClose();
-    if (onAuthSuccess) {
-      onAuthSuccess();
-    }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const res = await login(email, password);
+    if (res.success) onClose();
+    else setError(res.error);
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 relative">
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full transition"
-        >
-          <X size={24} className="text-gray-600" />
-        </button>
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 relative animate-in zoom-in duration-200">
+        <button onClick={onClose} className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"><X size={20}/></button>
+        <h2 className="text-2xl font-bold mb-2">{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
+        
+        {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">{error}</div>}
 
-        {/* Hungr Logo/Header */}
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-orange-600">Hungr</h1>
-          <p className="text-sm text-gray-500 mt-1">Food Delivery App</p>
-        </div>
-
-        {/* Auth Forms */}
-        <div className="mt-8">
-          {isLogin ? (
-            <LoginForm onSwitchToSignup={() => setIsLogin(false)} />
-          ) : (
-            <SignupForm onSwitchToLogin={() => setIsLogin(true)} />
-          )}
-        </div>
-
-        {/* Continue as Guest */}
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            className="w-full text-center text-sm text-gray-600 hover:text-gray-800 font-medium"
-          >
-            Continue as Guest
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input type="email" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200" required />
+          <input type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200" required />
+          <button type="submit" className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-orange-200 hover:bg-orange-700 transition">
+            {isLogin ? 'Login' : 'Sign Up'}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );
-}
+};
+
+export default AuthModal;
