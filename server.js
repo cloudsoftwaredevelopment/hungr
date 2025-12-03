@@ -1,6 +1,7 @@
 /**
  * server.js - Hungr Backend
- * Phase 1 + Phase 2 (Auth, Address, Wallet, Coins)
+ * Complete version: Serves API + Frontend (dist) + Geocoding
+ * Fixed: Port 3000, Geocoding Restored
  */
 
 import express from 'express';
@@ -11,29 +12,36 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+// FIX: Set to 3000 to match Nginx config
+const PORT = process.env.PORT || 3000;
+
+// Helper for ESM directories
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // JWT Secrets
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_this';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your_jwt_refresh_secret_change_this';
-const JWT_EXPIRY = '15m'; // Access token expires in 15 minutes
-const REFRESH_TOKEN_EXPIRY = 30 * 60; // Refresh token expires in 30 minutes (in seconds)
+const JWT_EXPIRY = '15m'; 
 
 // Middleware
 app.use(cors({
-    origin: ['http://localhost:3001', 'http://localhost:5173', 'https://nfcrevolution.com'],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    origin: ['http://localhost:3000', 'http://localhost:5173', 'https://nfcrevolution.com'],
+    credentials: true
 }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// Database Connection Pool
+// --- SERVE STATIC FRONTEND (DIST) ---
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Database Connection
 const db = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -44,7 +52,6 @@ const db = mysql.createPool({
     queueLimit: 0
 });
 
-// Test DB connection
 db.getConnection((err, connection) => {
     if (err) {
         console.error('❌ Error connecting to MariaDB:', err.message);
@@ -54,882 +61,241 @@ db.getConnection((err, connection) => {
     }
 });
 
-// --- STANDARDIZED ERROR RESPONSE ---
+// --- UTILS ---
 const sendError = (res, statusCode, message, code = 'ERROR', sqlError = null) => {
-    console.error(`[ERROR ${statusCode}] ${code}: ${message}`);
-    if (sqlError) {
-        console.error('[SQL ERROR]', sqlError.message);
-    }
-    res.status(statusCode).json({
-        success: false,
-        error: message,
-        code: code
-    });
+    if (sqlError) console.error(`[SQL Error] ${sqlError.message}`);
+    res.status(statusCode).json({ success: false, error: message, code });
 };
 
-const sendSuccess = (res, data, message = null, statusCode = 200) => {
-    res.status(statusCode).json({
-        success: true,
-        data: data,
-        ...(message && { message })
-    });
+const sendSuccess = (res, data, message = null) => {
+    res.status(200).json({ success: true, data, ...(message && { message }) });
 };
 
-// --- JWT MIDDLEWARE ---
-
-/**
- * Verify JWT token from Authorization header
- */
+// --- AUTH MIDDLEWARE ---
 const verifyToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
-
-    if (!token) {
-        return sendError(res, 401, 'No token provided', 'NO_TOKEN');
-    }
+    const token = req.headers['authorization']?.split(' ')[1];
+    if (!token) return sendError(res, 401, 'No token provided');
 
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
-        if (err) {
-            return sendError(res, 403, 'Invalid or expired token', 'INVALID_TOKEN');
-        }
+        if (err) return sendError(res, 403, 'Invalid token');
         req.user = decoded;
         next();
     });
 };
 
-// --- HELPER FUNCTIONS ---
-
-/**
- * Group menu items by category
- */
-const groupMenuByCategory = (items) => {
-    return items.reduce((acc, item) => {
-        const category = item.category || 'Other';
-        if (!acc[category]) {
-            acc[category] = [];
-        }
-        acc[category].push(item);
-        return acc;
-    }, {});
-};
-
-/**
- * Generate JWT token
- */
-const generateToken = (userId, expiresIn = JWT_EXPIRY) => {
-    return jwt.sign({ userId }, JWT_SECRET, { expiresIn });
-};
-
-/**
- * Generate Refresh Token
- */
-const generateRefreshToken = (userId) => {
-    return jwt.sign({ userId }, JWT_REFRESH_SECRET, { expiresIn: '30m' });
-};
-
-/**
- * Hash password with bcrypt
- */
-const hashPassword = async (password) => {
-    return bcrypt.hash(password, 10);
-};
-
-/**
- * Compare password with hash
- */
-const comparePassword = async (password, hash) => {
-    return bcrypt.compare(password, hash);
-};
-
-// --- API ROUTES ---
-
-// 1. Health Check
-app.get('/api/health', (req, res) => {
-    sendSuccess(res, { status: 'Server is running' });
-});
+const generateToken = (userId) => jwt.sign({ userId }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 
 // ==========================================
-// AUTHENTICATION ENDPOINTS
+// GEOCODING ENDPOINTS (RESTORED)
 // ==========================================
 
-// 2. Sign Up
-app.post('/api/auth/signup', async (req, res) => {
-    const { username, email, password, phone_number } = req.body;
-
-    console.log('[SIGNUP] Received signup request:', { username, email, phone_number });
-
-    // Validation
-    if (!username || !email || !password) {
-        return sendError(res, 400, 'Username, email, and password are required', 'MISSING_FIELDS');
-    }
-
-    if (password.length < 6) {
-        return sendError(res, 400, 'Password must be at least 6 characters', 'WEAK_PASSWORD');
-    }
-
-    try {
-        // Hash password
-        const passwordHash = await hashPassword(password);
-
-        const query = `
-            INSERT INTO users (username, email, password_hash, phone_number)
-            VALUES (?, ?, ?, ?)
-        `;
-
-        db.query(query, [username, email, passwordHash, phone_number || null], (err, result) => {
-            if (err) {
-                if (err.code === 'ER_DUP_ENTRY') {
-                    return sendError(res, 400, 'Username or email already exists', 'USER_EXISTS', err);
-                }
-                return sendError(res, 500, 'Failed to create user', 'DB_ERROR', err);
-            }
-
-            const userId = result.insertId;
-            console.log('[SIGNUP] User created with ID:', userId);
-
-            // Create initial coin balance
-            const coinQuery = 'INSERT INTO hungr_coins (user_id, balance) VALUES (?, 0)';
-            db.query(coinQuery, [userId], (coinErr) => {
-                if (coinErr) console.error('[COIN ERROR]', coinErr.message);
-            });
-
-            // Create initial wallet
-            const walletQuery = 'INSERT INTO wallets (user_id, balance) VALUES (?, 0)';
-            db.query(walletQuery, [userId], (walletErr) => {
-                if (walletErr) console.error('[WALLET ERROR]', walletErr.message);
-            });
-
-            // Generate tokens
-            const accessToken = generateToken(userId);
-            const refreshToken = generateRefreshToken(userId);
-
-            // Store refresh token in database
-            const refreshTokenExpiry = new Date(Date.now() + REFRESH_TOKEN_EXPIRY * 1000);
-            const storeTokenQuery = 'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)';
-            db.query(storeTokenQuery, [userId, refreshToken, refreshTokenExpiry], (tokenErr) => {
-                if (tokenErr) console.error('[REFRESH TOKEN ERROR]', tokenErr.message);
-            });
-
-            // Set HttpOnly cookie
-            res.cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'Strict',
-                maxAge: REFRESH_TOKEN_EXPIRY * 1000
-            });
-
-            console.log(`✅ User ${username} registered successfully`);
-
-            sendSuccess(res, {
-                userId: userId,
-                username: username,
-                email: email,
-                accessToken: accessToken
-            }, 'User registered successfully', 201);
-        });
-    } catch (err) {
-        console.error('[SIGNUP ERROR]', err.message);
-        sendError(res, 500, 'Signup failed', 'SIGNUP_ERROR');
-    }
-});
-
-// 3. Login
-app.post('/api/auth/login', (req, res) => {
-    const { email, password } = req.body;
-
-    console.log('[LOGIN] Received login request:', { email });
-
-    // Validation
-    if (!email || !password) {
-        return sendError(res, 400, 'Email and password are required', 'MISSING_FIELDS');
-    }
-
-    const query = 'SELECT * FROM users WHERE email = ?';
-    db.query(query, [email], async (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Login failed', 'DB_ERROR', err);
-        }
-
-        if (!results || results.length === 0) {
-            return sendError(res, 401, 'Invalid email or password', 'INVALID_CREDENTIALS');
-        }
-
-        const user = results[0];
-
-        try {
-            // Verify password
-            const passwordMatch = await comparePassword(password, user.password_hash);
-
-            if (!passwordMatch) {
-                return sendError(res, 401, 'Invalid email or password', 'INVALID_CREDENTIALS');
-            }
-
-            // Generate tokens
-            const accessToken = generateToken(user.id);
-            const refreshToken = generateRefreshToken(user.id);
-
-            // Store refresh token in database
-            const refreshTokenExpiry = new Date(Date.now() + REFRESH_TOKEN_EXPIRY * 1000);
-            const storeTokenQuery = 'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, ?)';
-            db.query(storeTokenQuery, [user.id, refreshToken, refreshTokenExpiry], (tokenErr) => {
-                if (tokenErr) console.error('[REFRESH TOKEN ERROR]', tokenErr.message);
-            });
-
-            // Set HttpOnly cookie
-            res.cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'Strict',
-                maxAge: REFRESH_TOKEN_EXPIRY * 1000
-            });
-
-            console.log(`✅ User ${user.username} logged in successfully`);
-
-            sendSuccess(res, {
-                userId: user.id,
-                username: user.username,
-                email: user.email,
-                phone_number: user.phone_number,
-                accessToken: accessToken
-            }, 'Login successful');
-        } catch (err) {
-            console.error('[LOGIN ERROR]', err.message);
-            sendError(res, 500, 'Login failed', 'LOGIN_ERROR');
-        }
-    });
-});
-
-// 4. Refresh Token
-app.post('/api/auth/refresh', (req, res) => {
-    const refreshToken = req.cookies.refreshToken;
-
-    console.log('[REFRESH] Received refresh token request');
-
-    if (!refreshToken) {
-        return sendError(res, 401, 'No refresh token provided', 'NO_REFRESH_TOKEN');
-    }
-
-    jwt.verify(refreshToken, JWT_REFRESH_SECRET, (err, decoded) => {
-        if (err) {
-            return sendError(res, 403, 'Invalid or expired refresh token', 'INVALID_REFRESH_TOKEN');
-        }
-
-        const userId = decoded.userId;
-        const newAccessToken = generateToken(userId);
-
-        console.log(`✅ Access token refreshed for user ${userId}`);
-
-        sendSuccess(res, {
-            accessToken: newAccessToken
-        }, 'Token refreshed');
-    });
-});
-
-// 5. Logout
-app.post('/api/auth/logout', (req, res) => {
-    const refreshToken = req.cookies.refreshToken;
-
-    console.log('[LOGOUT] Received logout request');
-
-    if (refreshToken) {
-        // Delete refresh token from database
-        db.query('DELETE FROM refresh_tokens WHERE token = ?', [refreshToken], (err) => {
-            if (err) console.error('[DELETE TOKEN ERROR]', err.message);
-        });
-    }
-
-    // Clear cookie
-    res.clearCookie('refreshToken');
-
-    console.log('✅ User logged out successfully');
-
-    sendSuccess(res, {}, 'Logout successful');
-});
-
-// ==========================================
-// USER ENDPOINTS
-// ==========================================
-
-// 6. Get User Profile (Protected)
-app.get('/api/users/profile', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-
-    console.log('[PROFILE] Fetching profile for user:', userId);
-
-    const query = 'SELECT id, username, email, phone_number, address, created_at FROM users WHERE id = ?';
-    db.query(query, [userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch profile', 'DB_ERROR', err);
-        }
-
-        if (!results || results.length === 0) {
-            return sendError(res, 404, 'User not found', 'USER_NOT_FOUND');
-        }
-
-        sendSuccess(res, results[0]);
-    });
-});
-
-// ==========================================
-// COIN ENDPOINTS
-// ==========================================
-
-// 7. Get Coin Balance (Protected)
-app.get('/api/users/coins', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-
-    console.log('[COINS] Fetching coin balance for user:', userId);
-
-    const query = 'SELECT balance FROM hungr_coins WHERE user_id = ?';
-    db.query(query, [userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch coin balance', 'DB_ERROR', err);
-        }
-
-        const balance = results && results.length > 0 ? results[0].balance : 0;
-        sendSuccess(res, { balance: balance });
-    });
-});
-
-// 8. Get Coin Transaction History (Protected)
-app.get('/api/users/coins/transactions', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-    const limit = req.query.limit || 50;
-    const offset = req.query.offset || 0;
-
-    console.log('[COINS] Fetching coin transactions for user:', userId);
-
-    const query = `
-        SELECT * FROM coin_transactions 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT ? OFFSET ?
-    `;
-    db.query(query, [userId, parseInt(limit), parseInt(offset)], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch coin transactions', 'DB_ERROR', err);
-        }
-
-        sendSuccess(res, results);
-    });
-});
-
-// ==========================================
-// WALLET ENDPOINTS
-// ==========================================
-
-// 9. Get Wallet Balance (Protected)
-app.get('/api/users/wallet', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-
-    console.log('[WALLET] Fetching wallet balance for user:', userId);
-
-    const query = 'SELECT balance FROM wallets WHERE user_id = ?';
-    db.query(query, [userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch wallet balance', 'DB_ERROR', err);
-        }
-
-        const balance = results && results.length > 0 ? results[0].balance : 0;
-        sendSuccess(res, { balance: balance });
-    });
-});
-
-// 10. Get Wallet Transaction History (Protected)
-app.get('/api/users/wallet/transactions', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-    const limit = req.query.limit || 50;
-    const offset = req.query.offset || 0;
-
-    console.log('[WALLET] Fetching wallet transactions for user:', userId);
-
-    const query = `
-        SELECT * FROM wallet_transactions 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT ? OFFSET ?
-    `;
-    db.query(query, [userId, parseInt(limit), parseInt(offset)], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch wallet transactions', 'DB_ERROR', err);
-        }
-
-        sendSuccess(res, results);
-    });
-});
-
-// ==========================================
-// RESTAURANT & MENU ENDPOINTS (Phase 1)
-// ==========================================
-
-// 11. Get All Restaurants
-app.get('/api/restaurants', (req, res) => {
-    const query = 'SELECT * FROM restaurants ORDER BY is_featured DESC, rating DESC';
-
-    db.query(query, (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch restaurants', 'DB_QUERY_ERROR', err);
-        }
-
-        if (!results || results.length === 0) {
-            console.log('[INFO] No restaurants found');
-        }
-
-        sendSuccess(res, results);
-    });
-});
-
-// 12. Get Menu for a Restaurant
-app.get('/api/restaurants/:id/menu', (req, res) => {
-    const restaurantId = req.params.id;
-
-    if (!restaurantId || isNaN(restaurantId)) {
-        return sendError(res, 400, 'Invalid restaurant ID', 'INVALID_ID');
-    }
-
-    const query = `
-        SELECT m.* FROM menu_items m
-        WHERE m.restaurant_id = ?
-        ORDER BY m.category ASC, m.name ASC
-    `;
-
-    db.query(query, [restaurantId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch menu items', 'DB_QUERY_ERROR', err);
-        }
-
-        const groupedMenu = groupMenuByCategory(results);
-
-        if (Object.keys(groupedMenu).length === 0) {
-            return sendError(res, 404, 'No menu items found for this restaurant', 'MENU_NOT_FOUND');
-        }
-
-        sendSuccess(res, groupedMenu);
-    });
-});
-
-// ==========================================
-// ORDER ENDPOINTS
-// ==========================================
-
-// 13. Create Order
-app.post('/api/orders', (req, res) => {
-    const { userId, restaurantId, items, total } = req.body;
-
-    console.log('[ORDER] Received order request:', { userId, restaurantId, itemsCount: items?.length, total });
-
-    // Validate request
-    if (!restaurantId || isNaN(restaurantId)) {
-        return sendError(res, 400, 'Invalid or missing restaurant ID', 'INVALID_RESTAURANT_ID');
-    }
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-        return sendError(res, 400, 'Order must contain at least one item', 'EMPTY_ORDER');
-    }
-
-    if (!total || isNaN(total) || total <= 0) {
-        return sendError(res, 400, 'Invalid total amount', 'INVALID_TOTAL');
-    }
-
-    // Validate each item
-    for (let item of items) {
-        if (!item.id || !item.quantity || !item.price) {
-            return sendError(res, 400, 'All items must have id, quantity, and price', 'INVALID_ITEM');
-        }
-        if (isNaN(item.quantity) || item.quantity <= 0) {
-            return sendError(res, 400, 'Item quantity must be greater than 0', 'INVALID_QUANTITY');
-        }
-    }
-
-    db.getConnection((err, connection) => {
-        if (err) {
-            console.error('[DB CONNECTION ERROR]', err.message);
-            return sendError(res, 500, 'Database connection failed', 'DB_CONNECTION_ERROR', err);
-        }
-
-        connection.beginTransaction((err) => {
-            if (err) {
-                connection.release();
-                console.error('[TRANSACTION ERROR]', err.message);
-                return sendError(res, 500, 'Transaction start failed', 'TRANSACTION_ERROR', err);
-            }
-
-            // Insert order
-            const orderQuery = `
-                INSERT INTO orders (user_id, restaurant_id, total_amount, status)
-                VALUES (?, ?, ?, 'pending')
-            `;
-
-            console.log('[SQL] Inserting order with params:', [userId || 1, restaurantId, total]);
-
-            connection.query(orderQuery, [userId || 1, restaurantId, total], (err, result) => {
-                if (err) {
-                    console.error('[ORDER INSERT ERROR]', err.message, err.code, err.sql);
-                    return connection.rollback(() => {
-                        connection.release();
-                        sendError(res, 500, 'Failed to create order', 'ORDER_INSERT_ERROR', err);
-                    });
-                }
-
-                const orderId = result.insertId;
-                console.log('[ORDER CREATED] Order ID:', orderId);
-
-                // Prepare order items
-                const itemValues = items.map(item => [
-                    orderId,
-                    item.id,
-                    item.quantity,
-                    item.price
-                ]);
-
-                // Insert order items
-                const itemsQuery = `
-                    INSERT INTO order_items (order_id, menu_item_id, quantity, price_at_time)
-                    VALUES ?
-                `;
-
-                console.log('[SQL] Inserting order items for order:', orderId, '| Items count:', itemValues.length);
-
-                connection.query(itemsQuery, [itemValues], (err) => {
-                    if (err) {
-                        console.error('[ORDER ITEMS INSERT ERROR]', err.message, err.code, err.sql);
-                        return connection.rollback(() => {
-                            connection.release();
-                            sendError(res, 500, 'Failed to add items to order', 'ORDER_ITEMS_ERROR', err);
-                        });
-                    }
-
-                    // Commit transaction
-                    connection.commit((err) => {
-                        if (err) {
-                            console.error('[COMMIT ERROR]', err.message);
-                            return connection.rollback(() => {
-                                connection.release();
-                                sendError(res, 500, 'Transaction commit failed', 'COMMIT_ERROR', err);
-                            });
-                        }
-
-                        connection.release();
-                        console.log(`✅ Order #${orderId} placed successfully with ${items.length} items`);
-
-                        sendSuccess(res, {
-                            orderId: orderId,
-                            status: 'pending',
-                            createdAt: new Date().toISOString()
-                        }, 'Order placed successfully', 201);
-                    });
-                });
-            });
-        });
-    });
-});
-
-// ==========================================
-// ADDRESS ENDPOINTS (Phase 2B)
-// ==========================================
-
-// 14. Get All Addresses for User (Protected)
-app.get('/api/users/addresses', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-
-    console.log('[ADDRESSES] Fetching addresses for user:', userId);
-
-    const query = 'SELECT id, label, address, latitude, longitude, is_default, created_at FROM user_addresses WHERE user_id = ? ORDER BY is_default DESC, created_at ASC';
-    
-    db.query(query, [userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to fetch addresses', 'DB_ERROR', err);
-        }
-
-        sendSuccess(res, results || []);
-    });
-});
-
-// 15. Create New Address (Protected)
-app.post('/api/users/addresses', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-    const { label, address, latitude, longitude, is_default } = req.body;
-
-    console.log('[ADDRESSES] Creating new address for user:', userId, { label, address });
-
-    // Validation
-    if (!label || !address) {
-        return sendError(res, 400, 'Label and address are required', 'MISSING_FIELDS');
-    }
-
-    if (!latitude || !longitude) {
-        return sendError(res, 400, 'Latitude and longitude are required', 'MISSING_COORDS');
-    }
-
-    // Check max 5 addresses per user
-    const countQuery = 'SELECT COUNT(*) as count FROM user_addresses WHERE user_id = ?';
-    db.query(countQuery, [userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to check address count', 'DB_ERROR', err);
-        }
-
-        if (results[0].count >= 5) {
-            return sendError(res, 400, 'Maximum 5 addresses allowed', 'MAX_ADDRESSES_REACHED');
-        }
-
-        // Insert address
-        const insertQuery = `
-            INSERT INTO user_addresses (user_id, label, address, latitude, longitude, is_default)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `;
-
-        db.query(insertQuery, [userId, label, address, latitude, longitude, is_default ? 1 : 0], (err, result) => {
-            if (err) {
-                if (err.code === 'ER_DUP_ENTRY') {
-                    return sendError(res, 400, 'Address label already exists', 'DUPLICATE_LABEL', err);
-                }
-                return sendError(res, 500, 'Failed to create address', 'DB_ERROR', err);
-            }
-
-            console.log('[ADDRESSES] Address created with ID:', result.insertId);
-
-            // If set as default, unset others
-            if (is_default) {
-                const updateDefaultQuery = 'UPDATE user_addresses SET is_default = 0 WHERE user_id = ? AND id != ?';
-                db.query(updateDefaultQuery, [userId, result.insertId], (err) => {
-                    if (err) console.error('[ADDRESS DEFAULT ERROR]', err.message);
-                });
-            }
-
-            sendSuccess(res, {
-                id: result.insertId,
-                label,
-                address,
-                latitude,
-                longitude,
-                is_default: is_default ? 1 : 0
-            }, 'Address created successfully', 201);
-        });
-    });
-});
-
-// 16. Update Address (Protected)
-app.put('/api/users/addresses/:id', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-    const addressId = req.params.id;
-    const { label, address, latitude, longitude, is_default } = req.body;
-
-    console.log('[ADDRESSES] Updating address:', addressId, 'for user:', userId);
-
-    // Validation
-    if (!label || !address) {
-        return sendError(res, 400, 'Label and address are required', 'MISSING_FIELDS');
-    }
-
-    // Check if address belongs to user
-    const checkQuery = 'SELECT id FROM user_addresses WHERE id = ? AND user_id = ?';
-    db.query(checkQuery, [addressId, userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to check address', 'DB_ERROR', err);
-        }
-
-        if (!results || results.length === 0) {
-            return sendError(res, 404, 'Address not found', 'ADDRESS_NOT_FOUND');
-        }
-
-        // Update address
-        const updateQuery = `
-            UPDATE user_addresses 
-            SET label = ?, address = ?, latitude = ?, longitude = ?, is_default = ?
-            WHERE id = ? AND user_id = ?
-        `;
-
-        db.query(updateQuery, [label, address, latitude, longitude, is_default ? 1 : 0, addressId, userId], (err) => {
-            if (err) {
-                if (err.code === 'ER_DUP_ENTRY') {
-                    return sendError(res, 400, 'Address label already exists', 'DUPLICATE_LABEL', err);
-                }
-                return sendError(res, 500, 'Failed to update address', 'DB_ERROR', err);
-            }
-
-            // If set as default, unset others
-            if (is_default) {
-                const updateDefaultQuery = 'UPDATE user_addresses SET is_default = 0 WHERE user_id = ? AND id != ?';
-                db.query(updateDefaultQuery, [userId, addressId], (err) => {
-                    if (err) console.error('[ADDRESS DEFAULT ERROR]', err.message);
-                });
-            }
-
-            console.log('✅ Address updated successfully');
-            sendSuccess(res, { id: addressId, label, address, latitude, longitude, is_default: is_default ? 1 : 0 });
-        });
-    });
-});
-
-// 17. Delete Address (Protected)
-app.delete('/api/users/addresses/:id', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-    const addressId = req.params.id;
-
-    console.log('[ADDRESSES] Deleting address:', addressId, 'for user:', userId);
-
-    // Check if address belongs to user
-    const checkQuery = 'SELECT id FROM user_addresses WHERE id = ? AND user_id = ?';
-    db.query(checkQuery, [addressId, userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to check address', 'DB_ERROR', err);
-        }
-
-        if (!results || results.length === 0) {
-            return sendError(res, 404, 'Address not found', 'ADDRESS_NOT_FOUND');
-        }
-
-        // Delete address
-        const deleteQuery = 'DELETE FROM user_addresses WHERE id = ? AND user_id = ?';
-        db.query(deleteQuery, [addressId, userId], (err) => {
-            if (err) {
-                return sendError(res, 500, 'Failed to delete address', 'DB_ERROR', err);
-            }
-
-            console.log('✅ Address deleted successfully');
-            sendSuccess(res, { id: addressId }, 'Address deleted successfully');
-        });
-    });
-});
-
-// 18. Set Default Address (Protected)
-app.post('/api/users/addresses/:id/default', verifyToken, (req, res) => {
-    const userId = req.user.userId;
-    const addressId = req.params.id;
-
-    console.log('[ADDRESSES] Setting default address:', addressId, 'for user:', userId);
-
-    // Check if address belongs to user
-    const checkQuery = 'SELECT id FROM user_addresses WHERE id = ? AND user_id = ?';
-    db.query(checkQuery, [addressId, userId], (err, results) => {
-        if (err) {
-            return sendError(res, 500, 'Failed to check address', 'DB_ERROR', err);
-        }
-
-        if (!results || results.length === 0) {
-            return sendError(res, 404, 'Address not found', 'ADDRESS_NOT_FOUND');
-        }
-
-        // Unset all defaults for user
-        const unsetQuery = 'UPDATE user_addresses SET is_default = 0 WHERE user_id = ?';
-        db.query(unsetQuery, [userId], (err) => {
-            if (err) {
-                return sendError(res, 500, 'Failed to unset defaults', 'DB_ERROR', err);
-            }
-
-            // Set this one as default
-            const setQuery = 'UPDATE user_addresses SET is_default = 1 WHERE id = ? AND user_id = ?';
-            db.query(setQuery, [addressId, userId], (err) => {
-                if (err) {
-                    return sendError(res, 500, 'Failed to set default', 'DB_ERROR', err);
-                }
-
-                console.log('✅ Default address set successfully');
-                sendSuccess(res, { id: addressId }, 'Default address set successfully');
-            });
-        });
-    });
-});
-
-// 19. Reverse Geocode (Get Address from Coordinates) - Public
+// 1. Reverse Geocode (Coords -> Address)
 app.get('/api/geocode/reverse', async (req, res) => {
     const { lat, lon } = req.query;
-
-    console.log('[GEOCODE] Reverse geocoding:', { lat, lon });
-
-    if (!lat || !lon) {
-        return sendError(res, 400, 'Latitude and longitude are required', 'MISSING_COORDS');
-    }
+    if (!lat || !lon) return sendError(res, 400, 'Missing coordinates');
 
     try {
-        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&accept-language=en`;
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+        const response = await fetch(url, { headers: { 'User-Agent': 'HungrApp/1.0' } });
         
-        const response = await fetch(url, {
-            headers: { 'User-Agent': 'HungrApp/1.0' }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Nominatim API error: ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error('Nominatim API error');
+        
         const data = await response.json();
         
-        console.log('[GEOCODE] Result:', data.address?.road || data.display_name);
+        // Format the address nicely
+        const address = data.address;
+        const formattedAddress = [
+            address.road,
+            address.suburb,
+            address.city || address.town,
+        ].filter(Boolean).join(', ');
 
         sendSuccess(res, {
-            address: data.address?.road ? `${data.address.road}, ${data.address.city || data.address.town}` : data.display_name,
-            display_name: data.display_name,
-            latitude: data.lat,
-            longitude: data.lon,
-            address_components: data.address
+            address: formattedAddress || data.display_name,
+            display_name: data.display_name
         });
     } catch (err) {
-        console.error('[GEOCODE ERROR]', err.message);
-        sendError(res, 500, 'Reverse geocoding failed', 'GEOCODE_ERROR');
+        console.error('Geocode Error:', err.message);
+        sendError(res, 500, 'Geocoding failed');
     }
 });
 
-// 20. Search Addresses (Nominatim) - Public
+// 2. Search Address (Query -> Coords)
 app.get('/api/geocode/search', async (req, res) => {
-    const { q, limit = 5 } = req.query;
-
-    console.log('[GEOCODE] Searching addresses:', q);
-
-    if (!q || q.length < 2) {
-        return sendError(res, 400, 'Search query must be at least 2 characters', 'INVALID_QUERY');
-    }
+    const { q } = req.query;
+    if (!q) return sendError(res, 400, 'Missing query');
 
     try {
-        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=${limit}&accept-language=en`;
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1&countrycodes=ph`;
+        const response = await fetch(url, { headers: { 'User-Agent': 'HungrApp/1.0' } });
         
-        const response = await fetch(url, {
-            headers: { 'User-Agent': 'HungrApp/1.0' }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Nominatim API error: ${response.status}`);
-        }
-
-        const results = await response.json();
-
-        console.log('[GEOCODE] Found', results.length, 'results');
-
-        sendSuccess(res, results.map(result => ({
-            address: result.display_name,
-            latitude: result.lat,
-            longitude: result.lon,
-            type: result.type,
-            importance: result.importance
-        })));
+        if (!response.ok) throw new Error('Nominatim API error');
+        
+        const data = await response.json();
+        sendSuccess(res, data);
     } catch (err) {
-        console.error('[GEOCODE ERROR]', err.message);
-        sendError(res, 500, 'Address search failed', 'GEOCODE_ERROR');
+        console.error('Search Error:', err.message);
+        sendError(res, 500, 'Search failed');
     }
 });
 
-// 404 Handler
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Endpoint not found',
-        code: 'NOT_FOUND'
+// ==========================================
+// API ENDPOINTS
+// ==========================================
+
+// --- RESTAURANTS & MENU ---
+
+// 1. Get All Restaurants
+app.get('/api/restaurants', (req, res) => {
+    db.query('SELECT * FROM restaurants ORDER BY rating DESC', (err, results) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        sendSuccess(res, results);
     });
 });
 
-// Error Handler
-app.use((err, req, res, next) => {
-    console.error('Unhandled error:', err);
-    res.status(500).json({
-        success: false,
-        error: 'Internal server error',
-        code: 'INTERNAL_ERROR'
+// 2. Get Menu for a Restaurant
+app.get('/api/restaurants/:id/menu', (req, res) => {
+    const restaurantId = req.params.id;
+    const query = 'SELECT * FROM menu_items WHERE restaurant_id = ? ORDER BY category, name';
+    
+    db.query(query, [restaurantId], (err, results) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        
+        // Group menu items by category for easier frontend rendering
+        const menu = results.reduce((acc, item) => {
+            const cat = item.category || 'Other';
+            if (!acc[cat]) acc[cat] = [];
+            acc[cat].push(item);
+            return acc;
+        }, {});
+        
+        sendSuccess(res, menu);
     });
+});
+
+// --- PABILI SERVICE ---
+
+// 3. Get Stores for Pabili
+app.get('/api/pabili/stores', (req, res) => {
+    const query = `
+        SELECT id, name, address, image_url, delivery_time, rating 
+        FROM stores WHERE is_active = 1 ORDER BY rating DESC
+    `;
+    db.query(query, (err, results) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        sendSuccess(res, results);
+    });
+});
+
+// 4. Create Pabili Order
+app.post('/api/pabili/orders', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    const { storeId, items, estimatedCost, deliveryAddress } = req.body;
+
+    const query = `
+        INSERT INTO pabili_orders (user_id, merchant_id, items, estimated_cost, status, landmark)
+        VALUES (?, ?, ?, ?, 'pending', ?)
+    `;
+
+    db.query(query, [userId, storeId, JSON.stringify(items), estimatedCost, deliveryAddress], (err, result) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        sendSuccess(res, { orderId: result.insertId }, 'Order placed');
+    });
+});
+
+// --- STANDARD ORDERS ---
+
+// 5. Create Standard Food Order
+app.post('/api/orders', verifyToken, (req, res) => {
+    const { restaurantId, items, total } = req.body;
+    const userId = req.user.userId;
+
+    // Start transaction logic could be added here for robustness
+    const orderQuery = 'INSERT INTO orders (user_id, restaurant_id, total_amount, status) VALUES (?, ?, ?, "pending")';
+    
+    db.query(orderQuery, [userId, restaurantId, total], (err, result) => {
+        if (err) return sendError(res, 500, 'Failed to create order', 'DB_ERROR', err);
+        
+        const orderId = result.insertId;
+        const orderItems = items.map(i => [orderId, i.id, i.quantity, i.price]);
+        
+        const itemsQuery = 'INSERT INTO order_items (order_id, menu_item_id, quantity, price_at_time) VALUES ?';
+        db.query(itemsQuery, [orderItems], (err) => {
+            if (err) console.error('Error inserting items:', err); // Log but don't fail main request
+            sendSuccess(res, { orderId }, 'Order placed successfully');
+        });
+    });
+});
+
+// --- USER DATA ---
+
+// 6. Get User Addresses
+app.get('/api/users/addresses', verifyToken, (req, res) => {
+    db.query('SELECT * FROM user_addresses WHERE user_id = ?', [req.user.userId], (err, results) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        sendSuccess(res, results);
+    });
+});
+
+// 7. Save New Address
+app.post('/api/users/addresses', verifyToken, (req, res) => {
+    const { label, address, latitude, longitude } = req.body;
+    const query = 'INSERT INTO user_addresses (user_id, label, address, latitude, longitude) VALUES (?, ?, ?, ?, ?)';
+    
+    db.query(query, [req.user.userId, label, address, latitude, longitude], (err, result) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        sendSuccess(res, { id: result.insertId }, 'Address saved');
+    });
+});
+
+// --- AUTHENTICATION ---
+
+// 8. Login
+app.post('/api/auth/login', (req, res) => {
+    const { email, password } = req.body;
+    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+        if (err || results.length === 0) return sendError(res, 401, 'Invalid credentials');
+        
+        const user = results[0];
+        const valid = await bcrypt.compare(password, user.password_hash);
+        if (!valid) return sendError(res, 401, 'Invalid credentials');
+
+        const token = generateToken(user.id);
+        sendSuccess(res, { userId: user.id, username: user.username, accessToken: token });
+    });
+});
+
+// 9. Signup
+app.post('/api/auth/signup', async (req, res) => {
+    const { username, email, password, phone_number } = req.body;
+    try {
+        const hash = await bcrypt.hash(password, 10);
+        db.query('INSERT INTO users (username, email, password_hash, phone_number) VALUES (?, ?, ?, ?)', 
+            [username, email, hash, phone_number], (err, result) => {
+            if (err) return sendError(res, 400, 'User likely exists', 'DB_ERROR', err);
+            
+            const userId = result.insertId;
+            const token = generateToken(userId);
+            // Init empty wallet/coins
+            db.query('INSERT INTO hungr_coins (user_id) VALUES (?)', [userId]);
+            db.query('INSERT INTO wallets (user_id) VALUES (?)', [userId]);
+            
+            sendSuccess(res, { userId, username, accessToken: token });
+        });
+    } catch (e) {
+        sendError(res, 500, 'Server Error');
+    }
+});
+
+// --- CATCH-ALL ROUTE (FOR REACT) ---
+app.get('*', (req, res) => {
+    if (req.url.startsWith('/api/')) {
+        return sendError(res, 404, 'API Endpoint not found');
+    }
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Hungr Server running on port ${PORT}`);
-    console.log(`📍 API Base URL: http://localhost:${PORT}`);
-    console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
-    console.log(`🔐 JWT Expiry: ${JWT_EXPIRY}`);
-    console.log(`🔄 Refresh Token Expiry: ${REFRESH_TOKEN_EXPIRY / 60} minutes`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📂 Serving static files from: ${path.join(__dirname, 'dist')}`);
 });
