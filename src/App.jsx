@@ -13,24 +13,26 @@ const API_URL = '/api';
 
 // 1. Auth Context
 const AuthContext = createContext(null);
-
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check for existing session
     const token = sessionStorage.getItem('accessToken');
     const savedUser = sessionStorage.getItem('user');
+    
     if (token && savedUser) {
-      setUser(JSON.parse(savedUser));
-      setIsAuthenticated(true);
-    } else {
-        // Auto-login guest for demo purposes
-        const guestUser = { id: 999, username: 'Anna', email: 'anna@example.com', address: '123 Main St', phone_number: '09123456789', created_at: new Date().toISOString() };
-        setUser(guestUser);
-        setIsAuthenticated(true);
-    }
+      try {
+          setUser(JSON.parse(savedUser));
+          setIsAuthenticated(true);
+      } catch (e) {
+          // If JSON parse fails, clear invalid data
+          sessionStorage.clear();
+      }
+    } 
+    // REMOVED: The "else" block that auto-logged in Anna
     setLoading(false);
   }, []);
 
@@ -41,22 +43,23 @@ const AuthProvider = ({ children }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
+      
       const data = await res.json();
+      
       if (data.success) {
         sessionStorage.setItem('accessToken', data.data.accessToken);
-        sessionStorage.setItem('user', JSON.stringify(data.data));
+        sessionStorage.setItem('user', JSON.stringify(data.data)); // Save user data
         setUser(data.data);
         setIsAuthenticated(true);
         return { success: true };
       }
-      return { success: false, error: data.error };
+      
+      return { success: false, error: data.error || 'Login failed' };
+      
     } catch (err) {
-      const mockUser = { id: 1, username: 'Anna', email: email, address: 'Greenfield District', phone_number: '09171234567', created_at: new Date().toISOString() };
-      sessionStorage.setItem('accessToken', 'mock_token');
-      sessionStorage.setItem('user', JSON.stringify(mockUser));
-      setUser(mockUser);
-      setIsAuthenticated(true);
-      return { success: true };
+      console.error("Login Connection Error:", err);
+      // REMOVED: The fallback that created "Anna" on error
+      return { success: false, error: "Cannot connect to server. Please check your connection." };
     }
   };
 
@@ -73,7 +76,6 @@ const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-
 const useAuth = () => useContext(AuthContext);
 
 // --- SUB-COMPONENTS ---
