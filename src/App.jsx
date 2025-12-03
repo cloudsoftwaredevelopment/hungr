@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, createContext, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, ShoppingBag, MapPin, Star, Clock, Plus, Minus, ChevronLeft, 
   X, Trash2, Receipt, AlertCircle, Loader, Package, User, Bike, 
@@ -6,179 +6,15 @@ import {
   ChevronRight, LogOut, Phone, Mail, Navigation, Database, Store
 } from 'lucide-react';
 
+// --- IMPORTS ---
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ProfileView from './components/Profile/ProfileView';
+import SavedAddresses from './components/Address/SavedAddresses';
+
 // --- CONFIG ---
 const API_URL = '/api';
 
-// --- MOCKED COMPONENTS FOR CONTEXT & UTILS ---
-
-// 1. Auth Context
-const AuthContext = createContext(null);
-const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Check for existing session
-    const token = sessionStorage.getItem('accessToken');
-    const savedUser = sessionStorage.getItem('user');
-    
-    if (token && savedUser) {
-      try {
-          setUser(JSON.parse(savedUser));
-          setIsAuthenticated(true);
-      } catch (e) {
-          // If JSON parse fails, clear invalid data
-          sessionStorage.clear();
-      }
-    } 
-    // REMOVED: The "else" block that auto-logged in Anna
-    setLoading(false);
-  }, []);
-
-  const login = async (email, password) => {
-    try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      
-      const data = await res.json();
-      
-      if (data.success) {
-        sessionStorage.setItem('accessToken', data.data.accessToken);
-        sessionStorage.setItem('user', JSON.stringify(data.data)); // Save user data
-        setUser(data.data);
-        setIsAuthenticated(true);
-        return { success: true };
-      }
-      
-      return { success: false, error: data.error || 'Login failed' };
-      
-    } catch (err) {
-      console.error("Login Connection Error:", err);
-      // REMOVED: The fallback that created "Anna" on error
-      return { success: false, error: "Cannot connect to server. Please check your connection." };
-    }
-  };
-
-  const logout = () => {
-    sessionStorage.removeItem('accessToken');
-    sessionStorage.removeItem('user');
-    setUser(null);
-    setIsAuthenticated(false);
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, logout, loading }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
-const useAuth = () => useContext(AuthContext);
-
-// --- SUB-COMPONENTS ---
-
-const ProfileView = ({ setView }) => {
-  const { user, logout } = useAuth();
-
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      logout();
-      setView('home');
-    }
-  };
-
-  if (!user) {
-    return (
-      <div className="text-center py-10">
-        <p className="text-gray-400">Please login to view your profile</p>
-      </div>
-    );
-  }
-
-  const menuItems = [
-    { label: 'Saved Addresses', icon: MapPin, action: () => setView('addresses') },
-    { label: 'Payment Methods', icon: Wallet, action: () => setView('wallet') },
-    { label: 'Order History', icon: List, action: () => setView('transactions') },
-    { label: 'Help Center', icon: AlertCircle, action: () => {} },
-  ];
-
-  return (
-    <div className="pb-20 animate-in slide-in-from-right">
-      {/* Profile Header */}
-      <div className="bg-white p-4 rounded-xl shadow-sm flex items-center gap-4 mb-6">
-        <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center text-2xl font-bold text-orange-600">
-          {user.username?.charAt(0).toUpperCase() || 'U'}
-        </div>
-        <div className="flex-1">
-          <h3 className="font-bold text-lg text-gray-900">{user.username}</h3>
-          {user.phone_number && (
-            <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-              <Phone size={14} /> {user.phone_number}
-            </p>
-          )}
-          <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
-            <Mail size={14} /> {user.email}
-          </p>
-        </div>
-      </div>
-
-      {/* Menu Items */}
-      <div className="space-y-2 mb-6">
-        {menuItems.map((item) => (
-          <button
-            key={item.label}
-            onClick={item.action}
-            className="w-full text-left p-4 bg-white rounded-xl shadow-sm text-sm font-medium text-gray-700 flex justify-between items-center hover:bg-gray-50 transition"
-          >
-            <span className="flex items-center gap-2">
-              {item.icon && <item.icon size={18} className="text-gray-400" />}
-              {item.label}
-            </span>
-            <ChevronRight size={18} className="text-gray-400" />
-          </button>
-        ))}
-      </div>
-
-      {/* Logout Button */}
-      <button
-        onClick={handleLogout}
-        className="w-full p-4 bg-red-50 rounded-xl text-red-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition"
-      >
-        <LogOut size={18} />
-        Logout
-      </button>
-
-      {/* Account Info */}
-      <div className="mt-8 p-4 bg-gray-50 rounded-xl text-xs text-gray-500 text-center">
-        <p>Account created on {new Date(user.created_at || Date.now()).toLocaleDateString()}</p>
-      </div>
-    </div>
-  );
-};
-
-const SavedAddresses = ({ setView }) => {
-    const { user } = useAuth();
-    return (
-        <div className="animate-in slide-in-from-right pb-20">
-            <h2 className="text-lg font-bold mb-4">Saved Addresses</h2>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-2">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <span className="bg-orange-100 text-orange-600 text-xs font-bold px-2 py-1 rounded">Home</span>
-                        <p className="mt-2 text-sm text-gray-700">{user?.address || 'No address set'}</p>
-                    </div>
-                </div>
-            </div>
-            <button className="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-400 font-bold text-sm mt-4 flex items-center justify-center gap-2 hover:border-orange-300 hover:text-orange-500 transition">
-                <Plus size={16} /> Add New Address
-            </button>
-            <button onClick={() => setView('profile')} className="mt-6 text-center w-full text-gray-400 text-sm">Back to Profile</button>
-        </div>
-    )
-}
+// --- MONOLITHIC COMPONENTS (To be refactored next) ---
 
 const RidesView = ({ setView }) => { 
   // State
@@ -1180,9 +1016,9 @@ function AppContent() {
         {view === 'wallet' && <div className="text-center p-10"><Wallet size={48} className="mx-auto text-gray-300 mb-2"/>Wallet Feature</div>}
         {view === 'transactions' && <div className="text-center p-10"><List size={48} className="mx-auto text-gray-300 mb-2"/>Transactions</div>}
         
-        {/* ADDED: Profile View */}
+        {/* ADDED: Profile View (Refactored) */}
         {view === 'profile' && <ProfileView setView={setView} />}
-        {/* ADDED: Addresses View */}
+        {/* ADDED: Addresses View (Refactored) */}
         {view === 'addresses' && <SavedAddresses setView={setView} />}
         
         {/* ADDED: Rides View */}

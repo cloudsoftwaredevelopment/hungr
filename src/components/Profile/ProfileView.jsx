@@ -1,18 +1,13 @@
-// ========================================
-// FILE 3: UPDATE src/components/Profile/ProfileView.jsx
-// ========================================
-// Find the ProfileView component and update the menuItems section:
-
 import React from 'react';
-import { ChevronRight, LogOut, MapPin, Phone, Mail } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
+import { MapPin, Wallet, List, AlertCircle, Phone, Mail, ChevronRight, LogOut } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext'; // Import from the new location
 
-export default function ProfileView({ setView }) {
+const ProfileView = ({ setView }) => {
   const { user, logout } = useAuth();
 
   const handleLogout = async () => {
     if (window.confirm('Are you sure you want to logout?')) {
-      await logout();
+      logout();
       setView('home');
     }
   };
@@ -27,13 +22,13 @@ export default function ProfileView({ setView }) {
 
   const menuItems = [
     { label: 'Saved Addresses', icon: MapPin, action: () => setView('addresses') },
-    { label: 'Payment Methods', icon: null, action: () => {} },
-    { label: 'Order History', icon: null, action: () => {} },
-    { label: 'Help Center', icon: null, action: () => {} },
+    { label: 'Payment Methods', icon: Wallet, action: () => setView('wallet') },
+    { label: 'Order History', icon: List, action: () => setView('transactions') },
+    { label: 'Help Center', icon: AlertCircle, action: () => {} },
   ];
 
   return (
-    <div className="pb-20">
+    <div className="pb-20 animate-in slide-in-from-right">
       {/* Profile Header */}
       <div className="bg-white p-4 rounded-xl shadow-sm flex items-center gap-4 mb-6">
         <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center text-2xl font-bold text-orange-600">
@@ -84,4 +79,6 @@ export default function ProfileView({ setView }) {
       </div>
     </div>
   );
-}
+};
+
+export default ProfileView;
