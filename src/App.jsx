@@ -8,6 +8,7 @@ import {
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProfileView from './components/Profile/ProfileView';
 import SavedAddresses from './components/Address/SavedAddresses';
+import AddressEditor from './components/Address/AddressEditor';
 import RidesView from './components/Rides/RidesView';
 import StoresView from './components/Stores/StoresView';
 import PabiliView from './components/Pabili/PabiliView';
@@ -18,8 +19,9 @@ import AuthModal from './components/Auth/AuthModal';
 import HomeView from './components/Home/HomeView';
 import RestaurantView from './components/Restaurant/RestaurantView';
 import CartView from './components/Cart/CartView';
-import TransactionsView from './components/Transactions/TransactionsView'; // NEW IMPORT
-import WalletView from './components/Wallet/WalletView'; // NEW IMPORT
+import TransactionsView from './components/Transactions/TransactionsView'; 
+import WalletView from './components/Wallet/WalletView';
+import CoinsView from './components/Coin/CoinsView'; // NEW IMPORT
 
 // --- CONFIG ---
 const API_URL = '/api';
@@ -78,7 +80,7 @@ function AppContent() {
   );
 
   // Determine when to show the main Orange Header
-  const showMainHeader = view !== 'restaurant' && view !== 'cart' && view !== 'food' && view !== 'wallet' && view !== 'transactions';
+  const showMainHeader = view !== 'restaurant' && view !== 'cart' && view !== 'food' && view !== 'wallet' && view !== 'transactions' && view !== 'address-editor' && view !== 'addresses' && view !== 'coins';
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl relative overflow-hidden">
@@ -103,7 +105,7 @@ function AppContent() {
             )}
             
             <div className="flex items-center gap-2">
-              <CoinDisplay onClick={() => setView('wallet')} />
+              <CoinDisplay onClick={() => setView('coins')} /> {/* Wired to 'coins' view */}
               <button onClick={() => isAuthenticated ? setView('profile') : setShowAuthModal(true)} 
                 className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-xs">
                 {isAuthenticated && user ? user.username[0].toUpperCase() : <User size={16} />}
@@ -177,12 +179,17 @@ function AppContent() {
         {/* WALLET VIEW */}
         {view === 'wallet' && <WalletView />}
 
+        {/* COINS VIEW (New) */}
+        {view === 'coins' && <CoinsView setView={setView} />}
+
         {/* TRANSACTIONS VIEW */}
         {view === 'transactions' && <TransactionsView />}
         
         {/* Modular Views */}
         {view === 'profile' && <ProfileView setView={setView} />}
         {view === 'addresses' && <SavedAddresses setView={setView} />}
+        {view === 'address-editor' && <AddressEditor setView={setView} />}
+        
         {view === 'rides' && <RidesView setView={setView} />}
         {view === 'stores' && <StoresView setView={setView} addToCart={(item, store) => alert(`Added ${item.name}`)} />}
         {view === 'pabili' && <PabiliView setView={setView} />}
@@ -192,8 +199,8 @@ function AppContent() {
       {/* Modals & Nav */}
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
       
-      {/* Hide Bottom Nav on Restaurant Detail & Cart View */}
-      {view !== 'pabili' && view !== 'rides' && view !== 'stores' && view !== 'restaurant' && view !== 'cart' && view !== 'food' && (
+      {/* Hide Bottom Nav on certain views */}
+      {view !== 'pabili' && view !== 'rides' && view !== 'stores' && view !== 'restaurant' && view !== 'cart' && view !== 'food' && view !== 'address-editor' && view !== 'coins' && (
         <BottomNav view={view} setView={setView} cartCount={cart.length} />
       )}
       
