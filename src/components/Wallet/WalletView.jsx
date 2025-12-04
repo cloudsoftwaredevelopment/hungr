@@ -1,164 +1,176 @@
-/**
- * WalletView.jsx
- * Wallet page showing coins and real money balance
- */
-
 import React, { useState, useEffect } from 'react';
-import { Wallet, TrendingUp, Plus, AlertCircle, Loader } from 'lucide-react';
-import { useAuth } from '../../hooks/useAuth';
-import { API_ENDPOINTS, handleApiError, logApiCall } from '../../config/api';
+import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, CreditCard, History } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
-export default function WalletView() {
-  const { user, accessToken, isAuthenticated } = useAuth();
-  const [coinBalance, setCoinBalance] = useState(0);
-  const [walletBalance, setWalletBalance] = useState(0);
+const API_URL = '/api';
+
+const WalletView = () => {
+  const { user } = useAuth();
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState('');
 
-  // Fetch coin and wallet balance on mount
   useEffect(() => {
-    if (isAuthenticated && accessToken) {
-      fetchBalances();
-    } else {
-      setLoading(false);
+    if (user) {
+      fetchWalletData();
     }
-  }, [isAuthenticated, accessToken]);
+  }, [user]);
 
-  const fetchBalances = async () => {
-    setLoading(true);
-    setError(null);
-
+  const fetchWalletData = async () => {
     try {
-      // Fetch coin balance
-      logApiCall('GET', API_ENDPOINTS.USER_COINS);
-      const coinResponse = await fetch(API_ENDPOINTS.USER_COINS, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        },
-        credentials: 'include'
+      const token = sessionStorage.getItem('accessToken');
+      const response = await fetch(`${API_URL}/wallet`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-
-      if (coinResponse.ok) {
-        const coinData = await coinResponse.json();
-        if (coinData.success) {
-          setCoinBalance(Number(coinData.data.balance) || 0);
-          console.log('✅ Coin balance fetched:', coinData.data.balance);
-        }
-      } else {
-        console.error('Coin balance fetch failed:', coinResponse.status);
+      const data = await response.json();
+      if (data.success) {
+        setBalance(data.data.balance);
+        setTransactions(data.data.transactions);
       }
-
-      // Fetch wallet balance
-      logApiCall('GET', API_ENDPOINTS.USER_WALLET);
-      const walletResponse = await fetch(API_ENDPOINTS.USER_WALLET, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        },
-        credentials: 'include'
-      });
-
-      if (walletResponse.ok) {
-        const walletData = await walletResponse.json();
-        if (walletData.success) {
-          setWalletBalance(Number(walletData.data.balance) || 0);
-          console.log('✅ Wallet balance fetched:', walletData.data.balance);
-        }
-      } else {
-        console.error('Wallet balance fetch failed:', walletResponse.status);
-      }
-    } catch (err) {
-      const errorMsg = handleApiError(err);
-      setError(errorMsg);
-      console.error('Fetch balances error:', err);
+    } catch (error) {
+      console.error("Failed to fetch wallet", error);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="pb-20 flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <AlertCircle size={48} className="text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">Please login to view your wallet</p>
-        </div>
-      </div>
-    );
-  }
+  const handleTopUp = async () => {
+    if (!topUpAmount || isNaN(topUpAmount) || parseFloat(topUpAmount) <= 0) return;
 
-  console.log('WalletView render:', { loading, coinBalance, walletBalance, error });
-
-  if (loading) {
-    return (
-      <div className="pb-20 flex items-center justify-center min-h-screen">
-        <Loader size={32} className="animate-spin text-orange-600" />
-      </div>
-    );
-  }
+    try {
+      const token = sessionStorage.getItem('accessToken');
+      const response = await fetch(`${API_URL}/wallet/topup`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ amount: parseFloat(topUpAmount), method: 'gcash' })
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert("Top-up Successful!");
+        setShowTopUp(false);
+        setTopUpAmount('');
+        fetchWalletData(); // Refresh balance
+      }
+    } catch (error) {
+      console.error("Top-up failed", error);
+      alert("Top-up failed. Please try again.");
+    }
+  };
 
   return (
-    <div className="pb-20">
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 flex items-start gap-3">
-          <AlertCircle size={18} className="text-red-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-700">{error}</p>
+    <div className="animate-in slide-in-from-right pb-24 relative min-h-screen bg-gray-50">
+      
+      {/* Wallet Card */}
+      <div className="bg-gradient-to-br from-orange-600 to-red-600 text-white p-6 pt-8 rounded-b-3xl shadow-xl mb-6 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-4 opacity-10">
+            <Wallet size={120} />
+        </div>
+        
+        <p className="text-orange-100 text-sm font-medium mb-1">Total Balance</p>
+        <h1 className="text-4xl font-bold mb-6">₱ {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</h1>
+        
+        <div className="flex gap-3">
+            <button 
+                onClick={() => setShowTopUp(true)}
+                className="flex-1 bg-white text-orange-600 py-3 rounded-xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 active:scale-95 transition"
+            >
+                <Plus size={18} /> Top Up
+            </button>
+            <button className="flex-1 bg-orange-700/50 text-white py-3 rounded-xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 active:scale-95 transition backdrop-blur-sm">
+                <ArrowUpRight size={18} /> Transfer
+            </button>
+        </div>
+      </div>
+
+      {/* Transactions List */}
+      <div className="px-4">
+        <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+            <History size={18} className="text-gray-500" /> Recent Transactions
+        </h3>
+        
+        {loading ? (
+            <div className="text-center py-10 text-gray-400">Loading...</div>
+        ) : transactions.length === 0 ? (
+            <div className="text-center py-10 bg-white rounded-xl border border-gray-100">
+                <p className="text-gray-400 text-sm">No transactions yet</p>
+            </div>
+        ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                {transactions.map((tx) => (
+                    <div key={tx.id} className="p-4 border-b border-gray-100 last:border-b-0 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.type === 'topup' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                {tx.type === 'topup' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
+                            </div>
+                            <div>
+                                <p className="font-bold text-sm text-gray-900 capitalize">{tx.description || tx.type}</p>
+                                <p className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+                        <span className={`font-bold text-sm ${tx.type === 'topup' ? 'text-green-600' : 'text-gray-900'}`}>
+                            {tx.type === 'topup' ? '+' : '-'} ₱{parseFloat(tx.amount).toFixed(2)}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        )}
+      </div>
+
+      {/* Top Up Modal */}
+      {showTopUp && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-6 animate-in slide-in-from-bottom duration-300">
+                <h3 className="text-xl font-bold mb-4">Top Up Wallet</h3>
+                
+                <p className="text-sm text-gray-600 mb-2">Select Amount</p>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                    {[100, 200, 500, 1000].map(amt => (
+                        <button 
+                            key={amt}
+                            onClick={() => setTopUpAmount(amt.toString())}
+                            className={`py-2 rounded-lg border text-sm font-medium transition ${topUpAmount === amt.toString() ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-gray-200 text-gray-600'}`}
+                        >
+                            ₱{amt}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="relative mb-6">
+                    <span className="absolute left-4 top-3.5 font-bold text-gray-400">₱</span>
+                    <input 
+                        type="number" 
+                        className="w-full p-3 pl-8 bg-gray-50 border border-gray-200 rounded-xl font-bold text-lg focus:border-orange-500 outline-none"
+                        placeholder="Enter amount"
+                        value={topUpAmount}
+                        onChange={(e) => setTopUpAmount(e.target.value)}
+                    />
+                </div>
+
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setShowTopUp(false)}
+                        className="flex-1 py-3 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={handleTopUp}
+                        className="flex-1 bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition"
+                    >
+                        Confirm Top Up
+                    </button>
+                </div>
+            </div>
         </div>
       )}
 
-      {/* Coins Section */}
-      <div className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-6 mb-6 text-white shadow-lg">
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <p className="text-sm font-medium opacity-90">Hungr Coins</p>
-            <h2 className="text-4xl font-bold mt-1">🪙 {coinBalance}</h2>
-          </div>
-          <div className="bg-white/20 p-3 rounded-full">
-            <TrendingUp size={24} />
-          </div>
-        </div>
-        <p className="text-sm opacity-90">Earned from orders and rewards</p>
-      </div>
-
-      {/* Wallet Section */}
-      <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 mb-6 text-white shadow-lg">
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <p className="text-sm font-medium opacity-90">Wallet Balance</p>
-            <h2 className="text-4xl font-bold mt-1">₱ {walletBalance.toFixed(2)}</h2>
-          </div>
-          <div className="bg-white/20 p-3 rounded-full">
-            <Wallet size={24} />
-          </div>
-        </div>
-
-        {/* Top Up Button */}
-        <button className="w-full bg-white text-blue-600 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-50 transition">
-          <Plus size={18} />
-          Top Up
-        </button>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="space-y-3">
-        <h3 className="font-bold text-gray-800 text-sm px-1">Quick Actions</h3>
-
-        <div className="grid grid-cols-2 gap-3">
-          <button className="p-4 bg-white rounded-xl shadow-sm text-center hover:shadow-md transition">
-            <div className="text-2xl mb-2">💳</div>
-            <p className="text-xs font-medium text-gray-700">Payment Methods</p>
-          </button>
-
-          <button className="p-4 bg-white rounded-xl shadow-sm text-center hover:shadow-md transition">
-            <div className="text-2xl mb-2">🎁</div>
-            <p className="text-xs font-medium text-gray-700">Rewards</p>
-          </button>
-        </div>
-      </div>
-
-      {/* Info */}
-      <div className="mt-8 p-4 bg-blue-50 rounded-xl text-xs text-blue-700 text-center border border-blue-100">
-        <p>💡 Coins expire after 6 months of inactivity</p>
-      </div>
     </div>
   );
-}
+};
+
+export default WalletView;

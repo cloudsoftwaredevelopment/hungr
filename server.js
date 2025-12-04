@@ -248,9 +248,81 @@ app.post('/api/users/addresses', verifyToken, (req, res) => {
     });
 });
 
+// --- WALLET & TRANSACTIONS ---
+
+// 8. Get Wallet Balance and Transactions
+app.get('/api/wallet', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    
+    const walletQuery = 'SELECT balance FROM wallets WHERE user_id = ?';
+    const txQuery = 'SELECT * FROM wallet_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 20';
+
+    db.query(walletQuery, [userId], (err, walletResults) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        
+        const balance = walletResults.length > 0 ? walletResults[0].balance : 0;
+
+        db.query(txQuery, [userId], (err, txResults) => {
+            if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+            sendSuccess(res, { balance, transactions: txResults });
+        });
+    });
+});
+
+// 9. Top-up Wallet (Mock)
+app.post('/api/wallet/topup', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    const { amount, method } = req.body;
+
+    if (!amount || amount <= 0) return sendError(res, 400, 'Invalid amount');
+
+    // 1. Update Wallet Balance
+    const updateWallet = 'UPDATE wallets SET balance = balance + ? WHERE user_id = ?';
+    
+    db.query(updateWallet, [amount, userId], (err) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+
+        // 2. Record Transaction
+        const recordTx = `
+            INSERT INTO wallet_transactions (user_id, amount, type, payment_method, status, balance_after, description) 
+            VALUES (?, ?, 'topup', ?, 'success', (SELECT balance FROM wallets WHERE user_id = ?), 'Wallet Top-up')
+        `;
+        
+        db.query(recordTx, [userId, amount, method, userId], (err) => {
+            if (err) console.error("Tx Record Error", err); // Non-blocking
+            sendSuccess(res, { amount }, 'Top-up successful');
+        });
+    });
+});
+
+// 10. Get Order History (Transactions)
+app.get('/api/orders/history', verifyToken, (req, res) => {
+    const userId = req.user.userId;
+    
+    // Combine standard orders and pabili orders
+    // Using UNION to fetch simplified history
+    const query = `
+        SELECT 
+            id, 'food' as type, total_amount as amount, status, created_at, 
+            (SELECT name FROM restaurants WHERE id = orders.restaurant_id) as merchant_name
+        FROM orders WHERE user_id = ?
+        UNION
+        SELECT 
+            id, 'pabili' as type, estimated_cost as amount, status, created_at,
+            (SELECT name FROM stores WHERE id = pabili_orders.merchant_id) as merchant_name
+        FROM pabili_orders WHERE user_id = ?
+        ORDER BY created_at DESC
+    `;
+
+    db.query(query, [userId, userId], (err, results) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        sendSuccess(res, results);
+    });
+});
+
 // --- AUTHENTICATION ---
 
-// 8. Login
+// 11. Login
 app.post('/api/auth/login', (req, res) => {
     const { email, password } = req.body;
     db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
@@ -261,11 +333,11 @@ app.post('/api/auth/login', (req, res) => {
         if (!valid) return sendError(res, 401, 'Invalid credentials');
 
         const token = generateToken(user.id);
-        sendSuccess(res, { userId: user.id, username: user.username, accessToken: token });
+        sendSuccess(res, { userId: user.id, username: user.username, email: user.email, phone_number: user.phone_number, address: user.address, accessToken: token });
     });
 });
 
-// 9. Signup
+// 12. Signup
 app.post('/api/auth/signup', async (req, res) => {
     const { username, email, password, phone_number } = req.body;
     try {
@@ -278,7 +350,7 @@ app.post('/api/auth/signup', async (req, res) => {
             const token = generateToken(userId);
             // Init empty wallet/coins
             db.query('INSERT INTO hungr_coins (user_id) VALUES (?)', [userId]);
-            db.query('INSERT INTO wallets (user_id) VALUES (?)', [userId]);
+            db.query('INSERT INTO wallets (user_id, balance) VALUES (?, 0.00)', [userId]);
             
             sendSuccess(res, { userId, username, accessToken: token });
         });

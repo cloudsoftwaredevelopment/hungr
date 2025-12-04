@@ -7,7 +7,6 @@ import {
 const FoodView = ({ restaurants, setView, setActiveRestaurant }) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  // Added state for Delivery/Pickup toggle
   const [deliveryType, setDeliveryType] = useState('delivery'); // 'delivery' or 'pickup'
 
   // Categories based on your video/data
@@ -23,17 +22,40 @@ const FoodView = ({ restaurants, setView, setActiveRestaurant }) => {
     { id: 'Bakery', name: 'Bakery', icon: '🥐', color: 'bg-yellow-50' },
   ];
 
-  // Filtering Logic
+  // Smart Filtering Logic
   const filteredRestaurants = restaurants.filter(r => {
-    const matchesCategory = selectedCategory === 'All' || r.cuisine_type === selectedCategory || (selectedCategory === 'Asian' && r.cuisine_type === 'Chinese');
+    const type = r.cuisine_type || '';
+    const name = r.name || '';
     
-    // Enhanced search: check name OR cuisine_type
+    // 1. Category Filter (Enhanced for better matching)
+    let matchesCategory = false;
+    if (selectedCategory === 'All') {
+        matchesCategory = true;
+    } else if (selectedCategory === 'Chicken') {
+        // Allow Fast Food places known for chicken to appear
+        matchesCategory = type === 'Chicken' || 
+                          name.includes('Chicken') || 
+                          name.includes('KFC') || 
+                          name.includes('Jollibee') || 
+                          name.includes('Max') ||
+                          name.includes('Mang Inasal') ||
+                          name.includes('BonChon') ||
+                          name.includes('Kenny Rogers');
+    } else if (selectedCategory === 'Asian') {
+        matchesCategory = type === 'Asian' || type === 'Chinese' || type === 'Japanese' || type === 'Korean';
+    } else {
+        matchesCategory = type === selectedCategory;
+    }
+
+    // 2. Search Filter (With Keyword Mapping)
     const query = searchQuery.toLowerCase();
     const matchesSearch = 
-        r.name.toLowerCase().includes(query) || 
-        r.cuisine_type.toLowerCase().includes(query) ||
-        // Basic mapping for "hamburgers" -> "Fast Food" or "American" if specific tags aren't present
-        (query.includes('burger') && (r.cuisine_type === 'Fast Food' || r.cuisine_type === 'American'));
+        name.toLowerCase().includes(query) || 
+        type.toLowerCase().includes(query) ||
+        // Keyword Mapping for specific menu items requests
+        (query.includes('burger') && (type === 'Fast Food' || type === 'American' || name.includes('Burger'))) ||
+        (query.includes('fries') && (type === 'Fast Food' || type === 'American')) ||
+        (query.includes('milk tea') && (type === 'Coffee' || type === 'Dessert'));
 
     return matchesCategory && matchesSearch;
   });
@@ -47,7 +69,7 @@ const FoodView = ({ restaurants, setView, setActiveRestaurant }) => {
             <Search className="absolute left-4 top-3.5 text-gray-400" size={18} />
             <input 
                 type="text" 
-                placeholder="What shall we deliver?" 
+                placeholder="What shall we deliver? (e.g. hamburgers)" 
                 className="w-full bg-gray-100 py-3 pl-11 pr-4 rounded-full text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/50"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -58,13 +80,13 @@ const FoodView = ({ restaurants, setView, setActiveRestaurant }) => {
         <div className="flex gap-2 mb-2">
             <button 
                 onClick={() => setDeliveryType('delivery')}
-                className={`flex-1 py-2 rounded-full text-sm font-bold shadow-sm transition-colors ${deliveryType === 'delivery' ? 'bg-orange-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                className={`flex-1 py-2 rounded-full text-sm font-bold shadow-sm transition-colors duration-200 ${deliveryType === 'delivery' ? 'bg-orange-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
             >
                 Delivery
             </button>
             <button 
                 onClick={() => setDeliveryType('pickup')}
-                className={`flex-1 py-2 rounded-full text-sm font-bold shadow-sm transition-colors ${deliveryType === 'pickup' ? 'bg-orange-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                className={`flex-1 py-2 rounded-full text-sm font-bold shadow-sm transition-colors duration-200 ${deliveryType === 'pickup' ? 'bg-orange-600 text-white' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
             >
                 Pickup
             </button>
@@ -76,7 +98,7 @@ const FoodView = ({ restaurants, setView, setActiveRestaurant }) => {
         {categories.map((cat) => (
             <button 
                 key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
+                onClick={() => { setSelectedCategory(cat.id); setSearchQuery(''); }}
                 className="flex flex-col items-center gap-2 min-w-[70px] transition group"
             >
                 <div className={`w-16 h-16 rounded-full flex items-center justify-center text-3xl shadow-sm group-active:scale-95 transition ${selectedCategory === cat.id ? 'ring-4 ring-orange-500 ring-offset-2 ' + cat.color : 'bg-gray-50'}`}>
@@ -151,7 +173,7 @@ const FoodView = ({ restaurants, setView, setActiveRestaurant }) => {
                   key={r.id} 
                   className="flex gap-4 cursor-pointer active:scale-[0.99] transition bg-white" 
                   onClick={() => { 
-                      // Pass delivery type preference if needed in the future
+                      // Pass delivery type preference (will be used in the order/checkout flow)
                       setActiveRestaurant({...r, orderType: deliveryType}); 
                       setView('restaurant'); 
                   }}

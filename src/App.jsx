@@ -11,13 +11,15 @@ import SavedAddresses from './components/Address/SavedAddresses';
 import RidesView from './components/Rides/RidesView';
 import StoresView from './components/Stores/StoresView';
 import PabiliView from './components/Pabili/PabiliView';
-import FoodView from './components/Food/FoodView'; // NEW IMPORT
+import FoodView from './components/Food/FoodView';
 import BottomNav from './components/Navigation/BottomNav';
 import CoinDisplay from './components/Coin/CoinDisplay';
 import AuthModal from './components/Auth/AuthModal';
 import HomeView from './components/Home/HomeView';
 import RestaurantView from './components/Restaurant/RestaurantView';
 import CartView from './components/Cart/CartView';
+import TransactionsView from './components/Transactions/TransactionsView'; // NEW IMPORT
+import WalletView from './components/Wallet/WalletView'; // NEW IMPORT
 
 // --- CONFIG ---
 const API_URL = '/api';
@@ -76,8 +78,7 @@ function AppContent() {
   );
 
   // Determine when to show the main Orange Header
-  // We hide it for: restaurant details, cart, AND the new FoodView (since it has its own search bar header)
-  const showMainHeader = view !== 'restaurant' && view !== 'cart' && view !== 'food';
+  const showMainHeader = view !== 'restaurant' && view !== 'cart' && view !== 'food' && view !== 'wallet' && view !== 'transactions';
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl relative overflow-hidden">
@@ -173,9 +174,11 @@ function AppContent() {
             <CartView cart={cart} setCart={setCart} setView={setView} />
         )}
 
-        {/* Placeholder Views */}
-        {view === 'wallet' && <div className="text-center p-10"><Wallet size={48} className="mx-auto text-gray-300 mb-2"/>Wallet Feature</div>}
-        {view === 'transactions' && <div className="text-center p-10"><List size={48} className="mx-auto text-gray-300 mb-2"/>Transactions</div>}
+        {/* WALLET VIEW */}
+        {view === 'wallet' && <WalletView />}
+
+        {/* TRANSACTIONS VIEW */}
+        {view === 'transactions' && <TransactionsView />}
         
         {/* Modular Views */}
         {view === 'profile' && <ProfileView setView={setView} />}
@@ -194,7 +197,7 @@ function AppContent() {
         <BottomNav view={view} setView={setView} cartCount={cart.length} />
       )}
       
-      {/* Show Bottom Nav on Food View (Often consistent with apps like Grab) */}
+      {/* Show Bottom Nav on Food View */}
       {view === 'food' && (
         <BottomNav view={view} setView={setView} cartCount={cart.length} />
       )}
