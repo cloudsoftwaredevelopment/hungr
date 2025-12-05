@@ -1,7 +1,6 @@
 /**
  * server.js - Hungr Backend
- * Complete version: Serves API + Frontend (dist) + Geocoding
- * Fixed: Port 3000, Geocoding Restored, Profile Image Support, Increased Token Limit, Coin Support, Payment Logic, OTP Registration, Mobile Uniqueness Check, Semaphore Integration, Merchant Support
+ * Status: STABILITY FIX (Removed is_featured, Aggressive SPA Fallback)
  */
 
 import express from 'express';
@@ -25,11 +24,6 @@ const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_this';
 const JWT_EXPIRY = '24h'; 
-const SEMAPHORE_API_KEY = process.env.SEMAPHORE_API_KEY;
-
-// In-memory store for OTPs (Map<phoneNumber, {otp, expires}>)
-// In production, use Redis or a database table
-const otpStore = new Map();
 
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:5173', 'https://nfcrevolution.com'],
@@ -38,12 +32,20 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(cookieParser());
 
-// Serve Customer App (Default)
+// --- DEBUG LOGGING ---
+app.use((req, res, next) => {
+    // This helps us see in PM2 logs what paths are actually hitting the server
+    console.log(`[Request] ${req.method} ${req.url}`);
+    next();
+});
+
+// --- STATIC FILES ---
+// Mount dist to /hungr so assets load correctly
+app.use('/hungr', express.static(path.join(__dirname, 'dist')));
+// Also mount to root as a backup
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Serve Merchant App (if located in a subfolder like dist-merchant, strictly config dependent)
-// For now, assuming standard static serve or handled via Nginx proxy to same port API
-
+// --- DATABASE CONNECTION ---
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -54,22 +56,12 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Wrapper for simple queries
 const db = {
-    query: (sql, params, callback) => pool.query(sql, params, callback)
+    query: (sql, params, callback) => pool.query(sql, params, callback),
+    execute: (sql, params) => pool.promise().execute(sql, params) 
 };
 
-pool.getConnection((err, connection) => {
-    if (err) {
-        console.error('❌ Error connecting to MariaDB:', err.message);
-    } else {
-        console.log('✅ Connected to MariaDB database.');
-        
-        // Auto-migration checks...
-        connection.release();
-    }
-});
-
+// --- HELPER FUNCTIONS ---
 const sendError = (res, statusCode, message, code = 'ERROR', sqlError = null) => {
     if (sqlError) console.error(`[SQL Error] ${sqlError.message}`);
     res.status(statusCode).json({ success: false, error: message, code });
@@ -92,127 +84,188 @@ const verifyToken = (req, res, next) => {
 
 const generateToken = (payload) => jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
 
-// --- GEOCODING ENDPOINTS (Keep existing code) ---
-app.get('/api/geocode/reverse', async (req, res) => { /* ... existing code ... */ });
-app.get('/api/geocode/search', async (req, res) => { /* ... existing code ... */ });
-
-// --- CUSTOMER API ENDPOINTS (Keep existing code) ---
-// ... (Restaurants, Pabili, Orders, Addresses, Wallet, Coins, User Profile, Customer Auth) ...
-// (I am collapsing these for brevity in this response, but they remain in the final file)
+// ==========================================
+// ⛔ REGISTRATION CLOSED
+// ==========================================
+app.post('/api/auth/send-otp', (req, res) => sendError(res, 503, "Registration is closed for at the moment"));
+app.post('/api/auth/register', (req, res) => sendError(res, 503, "Registration is closed for at the moment"));
 
 // ==========================================
-// MERCHANT API ENDPOINTS (NEW)
+// 🛍️ PABILI API
 // ==========================================
-
-// 1. Merchant Login
-app.post('/api/merchant/login', (req, res) => {
-    const { email, password } = req.body;
-    db.query('SELECT * FROM merchants WHERE email = ?', [email], async (err, results) => {
-        if (err || results.length === 0) return sendError(res, 401, 'Invalid credentials');
-        
-        const merchant = results[0];
-        // In a real app, use bcrypt.compare. For legacy/demo data that might be plain text or simple hash:
-        // const valid = await bcrypt.compare(password, merchant.password_hash);
-        // Assuming strict bcrypt for security:
-        const valid = await bcrypt.compare(password, merchant.password_hash);
-        
-        if (!valid) return sendError(res, 401, 'Invalid credentials');
-
-        const token = generateToken({ 
-            id: merchant.id, 
-            role: 'merchant', 
-            restaurantId: merchant.restaurant_id 
-        });
-        
-        sendSuccess(res, { 
-            id: merchant.id, 
-            name: merchant.name, 
-            email: merchant.email, 
-            restaurantId: merchant.restaurant_id,
-            accessToken: token 
-        });
+app.get('/api/pabili/stores', (req, res) => {
+    const category = req.query.category;
+    let query = 'SELECT * FROM stores';
+    let params = [];
+    if (category && category !== 'All') {
+        query += ' WHERE category = ?';
+        params.push(category);
+    }
+    
+    // FIX: Removed 'is_featured' to prevent SQL crashes. Just sort by rating.
+    query += ' ORDER BY rating DESC'; 
+    
+    db.query(query, params, (err, results) => {
+        if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+        sendSuccess(res, results);
     });
 });
 
-// 2. Get Merchant Orders (Live Dashboard)
-app.get('/api/merchant/orders', verifyToken, (req, res) => {
+app.get('/api/pabili/search', (req, res) => {
+    const { q, lat, long } = req.query;
+    if (!q) return sendError(res, 400, "Query required");
+    
+    let sql = `SELECT DISTINCT s.* FROM stores s LEFT JOIN products p ON s.id = p.store_id WHERE s.name LIKE ? OR p.name LIKE ? OR p.description LIKE ? LIMIT 20`;
+    let params = [`%${q}%`, `%${q}%`, `%${q}%`];
+
+    if (lat && long) {
+        sql = `SELECT DISTINCT s.*, ( 6371 * acos( cos( radians(?) ) * cos( radians( s.latitude ) ) * cos( radians( s.longitude ) - radians(?) ) + sin( radians(?) ) * sin( radians( s.latitude ) ) ) ) AS distance FROM stores s LEFT JOIN products p ON s.id = p.store_id WHERE (s.name LIKE ? OR p.name LIKE ? OR p.description LIKE ?) HAVING distance < 4 ORDER BY distance ASC LIMIT 20`;
+        params = [lat, long, lat, `%${q}%`, `%${q}%`, `%${q}%`];
+    }
+    db.query(sql, params, (err, results) => {
+        if (err) return sendError(res, 500, "DB Search Error", "DB_ERROR", err);
+        sendSuccess(res, results);
+    });
+});
+
+// ==========================================
+// 🏪 MERCHANT API
+// ==========================================
+// Mount API Router for clean /api path handling
+const apiRouter = express.Router();
+
+apiRouter.post('/merchant/login', (req, res) => {
+    const { email, password } = req.body;
+    db.query('SELECT * FROM merchants WHERE email = ?', [email], async (err, results) => {
+        if (err || results.length === 0) return sendError(res, 401, 'Invalid credentials');
+        const merchant = results[0];
+        const valid = await bcrypt.compare(password, merchant.password_hash);
+        if (!valid) return sendError(res, 401, 'Invalid credentials');
+        const token = generateToken({ id: merchant.id, role: 'merchant', restaurantId: merchant.restaurant_id });
+        sendSuccess(res, { id: merchant.id, name: merchant.name, email: merchant.email, phone_number: merchant.phone_number, restaurant_id: merchant.restaurant_id, accessToken: token });
+    });
+});
+
+apiRouter.get('/merchant/orders', verifyToken, (req, res) => {
     const { restaurantId, role } = req.user;
     if (role !== 'merchant' || !restaurantId) return sendError(res, 403, 'Access denied');
-
-    const query = `
-        SELECT 
-            o.id, 
-            o.total_amount, 
-            o.status, 
-            o.created_at,
-            u.username as customer_name,
-            u.address as delivery_address,
-            JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'id', oi.id,
-                    'name', m.name,
-                    'quantity', oi.quantity,
-                    'price', oi.price_at_time
-                )
-            ) as items
-        FROM orders o
-        JOIN users u ON o.user_id = u.id
-        JOIN order_items oi ON o.id = oi.order_id
-        JOIN menu_items m ON oi.menu_item_id = m.id
-        WHERE o.restaurant_id = ?
-        GROUP BY o.id
-        ORDER BY o.created_at DESC
-    `;
-
+    const query = `SELECT o.id, o.total_amount, o.status, o.created_at, u.username as customer_name, u.address as delivery_address, JSON_ARRAYAGG(JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time)) as items FROM orders o JOIN users u ON o.user_id = u.id JOIN order_items oi ON o.id = oi.order_id JOIN menu_items m ON oi.menu_item_id = m.id WHERE o.restaurant_id = ? GROUP BY o.id ORDER BY o.created_at DESC`;
     db.query(query, [restaurantId], (err, results) => {
         if (err) return sendError(res, 500, 'DB Error', 'DB_ERROR', err);
-        // Parse JSON items if DB returns string (depends on driver version)
-        const orders = results.map(row => ({
-            ...row,
-            items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items
-        }));
+        const orders = results.map(row => ({ ...row, items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items }));
         sendSuccess(res, orders);
     });
 });
 
-// 3. Update Order Status
-app.post('/api/merchant/orders/:id/status', verifyToken, (req, res) => {
+apiRouter.post('/merchant/orders/:id/status', verifyToken, (req, res) => {
     const { restaurantId, role } = req.user;
     const orderId = req.params.id;
     const { status } = req.body;
-
     if (role !== 'merchant') return sendError(res, 403, 'Access denied');
-
-    // Verify ownership
-    db.query('SELECT id FROM orders WHERE id = ? AND restaurant_id = ?', [orderId, restaurantId], (err, results) => {
-        if (err) return sendError(res, 500, 'DB Error');
-        if (results.length === 0) return sendError(res, 404, 'Order not found');
-
-        db.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId], (err) => {
-            if (err) return sendError(res, 500, 'Update failed');
-            
-            // If status is 'ready_for_pickup', logic to notify riders would go here
-            if (status === 'ready_for_pickup') {
-                // TODO: Insert into rider_orders table or trigger notification
-            }
-
-            sendSuccess(res, { id: orderId, status }, 'Status updated');
-        });
+    db.query('UPDATE orders SET status = ? WHERE id = ? AND restaurant_id = ?', [status, orderId, restaurantId], (err, result) => {
+        if (err) return sendError(res, 500, 'Update failed');
+        if (result.affectedRows === 0) return sendError(res, 404, 'Order not found');
+        sendSuccess(res, { id: orderId, status }, 'Status updated');
     });
 });
 
-// --- RE-ADD EXISTING CUSTOMER ENDPOINTS FOR COMPLETENESS ---
-// (I'm keeping the existing ones from previous context here implicitly to ensure single-file integrity)
-app.get('/api/restaurants', (req, res) => { db.query('SELECT * FROM restaurants ORDER BY rating DESC', (e,r) => e ? sendError(res,500,'DB Error') : sendSuccess(res,r)); });
-app.get('/api/restaurants/:id/menu', (req, res) => { /* ... existing menu logic ... */ db.query('SELECT * FROM menu_items WHERE restaurant_id = ? ORDER BY category, name', [req.params.id], (e,r) => { if(e) return sendError(res,500,'DB Error'); const menu = r.reduce((a,i)=>{const c=i.category||'Other';if(!a[c])a[c]=[];a[c].push(i);return a;},{}); sendSuccess(res,menu); }); });
-// ... (Include all other existing endpoints: Auth, Wallet, Coins, Pabili, Orders POST)
+apiRouter.put('/merchant/:id/update', verifyToken, async (req, res) => {
+    const merchantId = req.params.id;
+    const { name, phone_number, restaurant_name, address, image_url, operating_hours, operating_days } = req.body;
+    if (parseInt(req.user.id) !== parseInt(merchantId)) return sendError(res, 403, "Unauthorized");
+    try {
+        const [rows] = await db.execute('SELECT restaurant_id FROM merchants WHERE id = ?', [merchantId]);
+        if (rows.length === 0) return sendError(res, 404, "Merchant not found");
+        const restaurantId = rows[0].restaurant_id;
+        await db.execute('UPDATE merchants SET name = ?, phone_number = ? WHERE id = ?', [name, phone_number, merchantId]);
+        if (restaurantId) {
+            await db.execute(`UPDATE restaurants SET name = ?, address = ?, image_url = ?, operating_hours = ?, operating_days = ? WHERE id = ?`, [restaurant_name, address, image_url, operating_hours, operating_days, restaurantId]);
+        }
+        const [updatedData] = await db.execute(`SELECT m.id, m.name, m.email, m.phone_number, m.restaurant_id, r.name as restaurant_name, r.address, r.image_url, r.operating_hours, r.operating_days FROM merchants m LEFT JOIN restaurants r ON m.restaurant_id = r.id WHERE m.id = ?`, [merchantId]);
+        sendSuccess(res, updatedData[0], "Store settings updated");
+    } catch (error) {
+        console.error("Update Error:", error);
+        sendError(res, 500, "Database update failed");
+    }
+});
 
-// Catch-All
+apiRouter.get('/merchant/:id/menu', verifyToken, (req, res) => {
+    db.query('SELECT * FROM menu_items WHERE restaurant_id = ? ORDER BY category, name', [req.user.restaurantId], (err, results) => {
+        if (err) return sendError(res, 500, 'DB Error');
+        sendSuccess(res, results);
+    });
+});
+
+apiRouter.post('/merchant/menu/save', verifyToken, (req, res) => {
+    const { id, restaurant_id, name, description, price, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end } = req.body;
+    if (req.user.restaurantId !== restaurant_id) return sendError(res, 403, "Unauthorized");
+    const sql = id ? `UPDATE menu_items SET name=?, description=?, price=?, promotional_price=?, category=?, image_url=?, stock_quantity=?, is_available=?, food_type=?, cuisine_type=?, availability_start=?, availability_end=? WHERE id=? AND restaurant_id=?` : `INSERT INTO menu_items (name, description, price, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end, restaurant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const params = id ? [name, description, price, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, id, restaurant_id] : [name, description, price, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, restaurant_id];
+    db.query(sql, params, (err, result) => {
+        if(err) return sendError(res, 500, "Save failed", "DB_ERROR", err);
+        sendSuccess(res, { id: id || result.insertId }, "Item saved");
+    });
+});
+
+apiRouter.delete('/merchant/menu/:itemId', verifyToken, (req, res) => {
+    db.query('DELETE FROM menu_items WHERE id = ? AND restaurant_id = ?', [req.params.itemId, req.user.restaurantId], (err) => {
+        if(err) return sendError(res, 500, "Delete failed");
+        sendSuccess(res, null, "Item deleted");
+    });
+});
+
+apiRouter.get('/merchant/:id/discounts', verifyToken, async (req, res) => {
+    const restaurantId = req.user.restaurantId;
+    const [existing] = await db.execute('SELECT id FROM store_discounts WHERE restaurant_id = ? AND is_system_default = 1', [restaurantId]);
+    if (existing.length === 0) {
+        await db.execute(`INSERT INTO store_discounts (restaurant_id, name, discount_type, value, is_active, is_system_default, requirements) VALUES (?, 'Senior Citizen', 'percentage', 20.00, 1, 1, 'Valid Senior Citizen ID'), (?, 'PWD', 'percentage', 20.00, 1, 1, 'Valid PWD ID')`, [restaurantId, restaurantId]);
+    }
+    db.query('SELECT * FROM store_discounts WHERE restaurant_id = ? ORDER BY is_system_default DESC, name ASC', [restaurantId], (err, r) => err ? sendError(res, 500, 'DB Error') : sendSuccess(res, r));
+});
+
+apiRouter.post('/merchant/discounts/save', verifyToken, (req, res) => {
+    const { id, restaurant_id, name, discount_type, value, is_active, requirements } = req.body;
+    if (req.user.restaurantId !== restaurant_id) return sendError(res, 403, "Unauthorized");
+    const sql = id ? 'UPDATE store_discounts SET name=?, discount_type=?, value=?, is_active=?, requirements=? WHERE id=? AND restaurant_id=?' : 'INSERT INTO store_discounts (name, discount_type, value, is_active, requirements, restaurant_id) VALUES (?, ?, ?, ?, ?, ?)';
+    const params = id ? [name, discount_type, value, is_active, requirements, id, restaurant_id] : [name, discount_type, value, is_active, requirements, restaurant_id];
+    db.query(sql, params, (err, r) => err ? sendError(res, 500, "Save failed") : sendSuccess(res, { id: id || r.insertId }));
+});
+
+apiRouter.delete('/merchant/discounts/:id', verifyToken, (req, res) => {
+    db.query('DELETE FROM store_discounts WHERE id = ? AND restaurant_id = ? AND is_system_default = 0', [req.params.id, req.user.restaurantId], (err) => err ? sendError(res, 500, "Delete failed") : sendSuccess(res, null, "Discount deleted"));
+});
+
+// Customer Auth
+apiRouter.post('/auth/login', (req, res) => {
+    const { email, password } = req.body;
+    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+        if (err || results.length === 0) return sendError(res, 401, 'User not found');
+        const user = results[0];
+        const valid = await bcrypt.compare(password, user.password_hash);
+        if (!valid) return sendError(res, 401, 'Invalid password');
+        const token = generateToken({ id: user.id, role: user.user_type });
+        sendSuccess(res, { id: user.id, username: user.username, email: user.email, token });
+    });
+});
+
+apiRouter.get('/restaurants', (req, res) => { 
+    db.query('SELECT * FROM restaurants ORDER BY rating DESC', (e,r) => e ? sendError(res,500,'DB Error') : sendSuccess(res,r)); 
+});
+
+// Mount Router
+app.use('/api', apiRouter);
+app.use('/hungr/api', apiRouter); // Support subpath API calls
+
+// --- SPA CATCH-ALL (Fixes 404s) ---
 app.get('*', (req, res) => {
-    if (req.url.startsWith('/api/')) return sendError(res, 404, 'API Endpoint not found');
+    // If it starts with /api or /hungr/api, it's a real 404 from the API
+    if (req.url.startsWith('/api/') || req.url.startsWith('/hungr/api/')) {
+        return sendError(res, 404, 'API Endpoint not found');
+    }
+    // Otherwise, it's a frontend route (like /login or /hungr/login), so serve index.html
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT} (SPA Fallback Active)`);
 });

@@ -1,46 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, ShoppingBag, Store, User, Bike, 
-  Wallet, List, AlertCircle, Database, X, ChevronLeft
-} from 'lucide-react';
+import { Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
+import { Search, ShoppingBag, Store, User, Bike, AlertCircle, Database, ChevronLeft } from 'lucide-react';
 
 // --- IMPORTS ---
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './components/Auth/Login'; 
+import HomeView from './components/Home/HomeView';
+import Pabili from './components/Pabili/Pabili';
+import CartView from './components/Cart/CartView';
 import ProfileView from './components/Profile/ProfileView';
 import SavedAddresses from './components/Address/SavedAddresses';
 import AddressEditor from './components/Address/AddressEditor';
 import RidesView from './components/Rides/RidesView';
 import StoresView from './components/Stores/StoresView';
-import PabiliView from './components/Pabili/PabiliView';
 import FoodView from './components/Food/FoodView';
 import BottomNav from './components/Navigation/BottomNav';
-import CoinDisplay from './components/Coin/CoinDisplay';
-import AuthModal from './components/Auth/AuthModal';
-import HomeView from './components/Home/HomeView';
-import RestaurantView from './components/Restaurant/RestaurantView';
-import CartView from './components/Cart/CartView';
-import TransactionsView from './components/Transactions/TransactionsView'; 
 import WalletView from './components/Wallet/WalletView';
-import CoinsView from './components/Coin/CoinsView'; // NEW IMPORT
-
-// --- CONFIG ---
-const API_URL = '/api';
-
-// --- MAIN APP CONTENT ---
+import TransactionsView from './components/Transactions/TransactionsView';
+import CoinsView from './components/Coin/CoinsView';
+import CoinDisplay from './components/Coin/CoinDisplay';
 
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
-  
-  // App State
-  const [view, setView] = useState('home');
   const [restaurants, setRestaurants] = useState([]);
-  const [activeRestaurant, setActiveRestaurant] = useState(null);
-  const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [showAuthModal, setShowAuthModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isUsingDemoData, setIsUsingDemoData] = useState(false);
+  
+  const [cart, setCart] = useState([]);
+
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchRestaurants();
@@ -49,48 +38,77 @@ function AppContent() {
   const fetchRestaurants = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/restaurants`);
+      const response = await fetch('https://nfcrevolution.com/hungr/api/restaurants');
       const data = await response.json();
-      if (data.success && data.data.length > 0) {
+      if (data.success) {
         setRestaurants(data.data);
-        setIsUsingDemoData(false);
-      } else {
-        throw new Error("Empty list");
       }
     } catch (err) {
-      console.warn("Using demo data");
-      setIsUsingDemoData(true);
-      setRestaurants([
-        { id: 1, name: "Jollibee", cuisine_type: "Fast Food", rating: 4.9, delivery_time_min: 20, delivery_time_max: 35, image_url: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&q=80&w=400" },
-        { id: 2, name: "McDonald's", cuisine_type: "Fast Food", rating: 4.8, delivery_time_min: 15, delivery_time_max: 30, image_url: "https://images.unsplash.com/photo-1552590635-27c2c2128abf?auto=format&fit=crop&q=80&w=400" },
-        { id: 3, name: "Chowking", cuisine_type: "Chinese", rating: 4.6, delivery_time_min: 25, delivery_time_max: 40, image_url: "https://images.unsplash.com/photo-1563245372-f21720e32c4d?auto=format&fit=crop&q=80&w=400" },
-        { id: 4, name: "Mang Inasal", cuisine_type: "Filipino", rating: 4.7, delivery_time_min: 30, delivery_time_max: 45, image_url: "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&q=80&w=400" },
-      ]);
+      console.error("Failed to fetch restaurants", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const ErrorBanner = ({ message }) => (
-    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 flex items-center gap-2">
-      <AlertCircle size={18} />
-      <span className="text-sm">{message}</span>
-      <button onClick={() => setError(null)} className="ml-auto"><X size={16} /></button>
-    </div>
-  );
+  const handleSetView = (viewName) => {
+    switch(viewName) {
+      case 'home': navigate('/'); break;
+      case 'pabili': navigate('/pabili'); break;
+      case 'cart': navigate('/cart'); break;
+      case 'profile': navigate('/profile'); break;
+      case 'wallet': navigate('/wallet'); break;
+      case 'rides': navigate('/rides'); break;
+      case 'stores': navigate('/stores'); break;
+      case 'food': navigate('/food'); break;
+      case 'transactions': navigate('/transactions'); break;
+      case 'coins': navigate('/coins'); break;
+      case 'addresses': navigate('/addresses'); break; 
+      case 'address-editor': navigate('/address-editor'); break;
+      default: navigate('/');
+    }
+  };
 
-  // Determine when to show the main Orange Header
-  const showMainHeader = view !== 'restaurant' && view !== 'cart' && view !== 'food' && view !== 'wallet' && view !== 'transactions' && view !== 'address-editor' && view !== 'addresses' && view !== 'coins';
+  const getCurrentView = () => {
+    const path = location.pathname;
+    if (path.includes('login')) return 'login';
+    if (path === '/' || path === '/hungr/') return 'home';
+    if (path.includes('pabili')) return 'pabili';
+    if (path.includes('cart')) return 'cart';
+    if (path.includes('profile')) return 'profile';
+    if (path.includes('food')) return 'food';
+    if (path.includes('rides')) return 'rides';
+    if (path.includes('stores')) return 'stores';
+    return 'home';
+  };
+
+  const currentView = getCurrentView();
+  
+  // UPDATED: Added 'pabili', 'stores', 'rides' to the exclusion list so they don't show the orange header
+  const showMainHeader = !['cart', 'food', 'wallet', 'transactions', 'address-editor', 'addresses', 'coins', 'login', 'pabili', 'stores', 'rides'].includes(currentView);
+  
+  const hideNavPaths = ['/login'];
+  const showBottomNav = !hideNavPaths.includes(location.pathname);
+
+  const ProtectedRoute = ({ children }) => {
+    const token = sessionStorage.getItem('token');
+    if (!token) return <Navigate to="/login" replace />;
+    return children;
+  };
+
+  const handleAddToCart = (item) => {
+    setCart([...cart, item]);
+    console.log("Added to cart:", item);
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl relative overflow-hidden">
+    <div className="min-h-screen bg-gray-50 text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl relative overflow-hidden font-sans">
       
-      {/* HEADER */}
+      {/* --- HEADER --- */}
       {showMainHeader && (
         <div className="bg-orange-600 text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-40">
           <div className="flex items-center justify-between gap-3">
-            {view !== 'home' ? (
-              <button onClick={() => setView('home')} className="p-1 hover:bg-white/20 rounded-full transition">
+            {currentView !== 'home' ? (
+              <button onClick={() => navigate('/')} className="p-1 hover:bg-white/20 rounded-full transition">
                 <ChevronLeft size={24} />
               </button>
             ) : (
@@ -105,108 +123,89 @@ function AppContent() {
             )}
             
             <div className="flex items-center gap-2">
-              <CoinDisplay onClick={() => setView('coins')} /> {/* Wired to 'coins' view */}
-              <button onClick={() => isAuthenticated ? setView('profile') : setShowAuthModal(true)} 
-                className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-xs">
-                {isAuthenticated && user ? user.username[0].toUpperCase() : <User size={16} />}
+              <CoinDisplay onClick={() => navigate('/coins')} />
+              <button onClick={() => user ? navigate('/profile') : navigate('/login')} 
+                className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-xs border border-white/30">
+                {user ? user.username[0].toUpperCase() : <User size={16} />}
               </button>
             </div>
           </div>
-          
-          {/* Dynamic Header Title */}
-          {(view === 'pabili' || view === 'rides' || view === 'stores') && (
-            <div className="mt-4 animate-in fade-in">
-              <h1 className="text-2xl font-bold flex items-center gap-2">
-                {view === 'pabili' ? <ShoppingBag className="text-orange-200" /> : 
-                 view === 'rides' ? <Bike className="text-orange-200" /> :
-                 <Store className="text-orange-200" />}
-                {view === 'pabili' ? 'Pabili' : view === 'rides' ? 'Rides' : 'Stores'}
-              </h1>
-              <p className="text-orange-100 text-sm opacity-90">
-                {view === 'pabili' ? 'Purchase custom items' : 
-                 view === 'rides' ? 'Where are you going?' :
-                 view === 'stores' ? 'Shop by category' :
-                 'Tracking your order'}
-              </p>
-            </div>
-          )}
         </div>
       )}
 
-      <div className="p-4">
-        {/* Data Source Indicator */}
-        {view === 'home' && (
-            <div className={`mb-3 text-xs font-bold px-2 py-1 rounded w-fit flex items-center gap-1 ${isUsingDemoData ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
-                {isUsingDemoData ? <><AlertCircle size={12}/> Demo Mode</> : <><Database size={12}/> Live Data</>}
-            </div>
-        )}
+      {/* --- MAIN ROUTES --- */}
+      <div className="p-0"> {/* Removed padding to allow full-width headers in components */}
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          <Route path="/" element={
+            <ProtectedRoute>
+              <div className="p-4">
+                <HomeView 
+                  user={user} 
+                  setView={handleSetView}
+                  restaurants={restaurants} 
+                  loading={loading}
+                />
+              </div>
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/pabili" element={<ProtectedRoute><Pabili /></ProtectedRoute>} />
+          <Route path="/pabili/store/:id" element={<ProtectedRoute><Pabili /></ProtectedRoute>} />
+          
+          <Route path="/cart" element={
+            <ProtectedRoute>
+              <div className="p-4"><CartView cart={cart} setCart={setCart} setView={handleSetView} /></div>
+            </ProtectedRoute>
+          } />
 
-        {error && <ErrorBanner message={error} />}
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <div className="p-4"><ProfileView user={user} setView={handleSetView} /></div>
+            </ProtectedRoute>
+          } />
 
-        {/* HOME VIEW */}
-        {view === 'home' && (
-          <HomeView 
-            restaurants={restaurants} 
-            loading={loading} 
-            setView={setView} 
-            setActiveRestaurant={setActiveRestaurant} 
-          />
-        )}
+          <Route path="/food" element={
+            <ProtectedRoute>
+               <FoodView 
+                 setView={handleSetView} 
+                 restaurants={restaurants} 
+                 setActiveRestaurant={() => {}} 
+              />
+            </ProtectedRoute>
+          } />
 
-        {/* NEW FOOD VIEW */}
-        {view === 'food' && (
-          <FoodView 
-            restaurants={restaurants} 
-            setView={setView} 
-            setActiveRestaurant={setActiveRestaurant}
-          />
-        )}
+          <Route path="/wallet" element={<ProtectedRoute><div className="p-4"><WalletView /></div></ProtectedRoute>} />
+          <Route path="/transactions" element={<ProtectedRoute><div className="p-4"><TransactionsView /></div></ProtectedRoute>} />
+          
+          <Route path="/rides" element={<ProtectedRoute><RidesView setView={handleSetView} /></ProtectedRoute>} />
+          <Route path="/stores" element={
+            <ProtectedRoute>
+              <StoresView 
+                setView={handleSetView} 
+                addToCart={handleAddToCart} 
+              />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/coins" element={<ProtectedRoute><div className="p-4"><CoinsView setView={handleSetView} /></div></ProtectedRoute>} />
+          <Route path="/addresses" element={<ProtectedRoute><div className="p-4"><SavedAddresses setView={handleSetView} /></div></ProtectedRoute>} />
+          <Route path="/address-editor" element={<ProtectedRoute><div className="p-4"><AddressEditor setView={handleSetView} /></div></ProtectedRoute>} />
 
-        {/* RESTAURANT DETAIL VIEW */}
-        {view === 'restaurant' && activeRestaurant && (
-            <RestaurantView 
-                restaurant={activeRestaurant} 
-                setView={setView} 
-                addToCart={(item) => setCart([...cart, item])}
-            />
-        )}
-
-        {/* CART VIEW */}
-        {view === 'cart' && (
-            <CartView cart={cart} setCart={setCart} setView={setView} />
-        )}
-
-        {/* WALLET VIEW */}
-        {view === 'wallet' && <WalletView />}
-
-        {/* COINS VIEW (New) */}
-        {view === 'coins' && <CoinsView setView={setView} />}
-
-        {/* TRANSACTIONS VIEW */}
-        {view === 'transactions' && <TransactionsView />}
-        
-        {/* Modular Views */}
-        {view === 'profile' && <ProfileView setView={setView} />}
-        {view === 'addresses' && <SavedAddresses setView={setView} />}
-        {view === 'address-editor' && <AddressEditor setView={setView} />}
-        
-        {view === 'rides' && <RidesView setView={setView} />}
-        {view === 'stores' && <StoresView setView={setView} addToCart={(item, store) => alert(`Added ${item.name}`)} />}
-        {view === 'pabili' && <PabiliView setView={setView} />}
-
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
-      
-      {/* Modals & Nav */}
-      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-      
-      {/* Hide Bottom Nav on certain views */}
-      {view !== 'pabili' && view !== 'rides' && view !== 'stores' && view !== 'restaurant' && view !== 'cart' && view !== 'food' && view !== 'address-editor' && view !== 'coins' && (
-        <BottomNav view={view} setView={setView} cartCount={cart.length} />
-      )}
-      
-      {/* Show Bottom Nav on Food View */}
-      {view === 'food' && (
-        <BottomNav view={view} setView={setView} cartCount={cart.length} />
+
+      {/* --- BOTTOM NAVIGATION --- */}
+      {showBottomNav && (
+        <div className="fixed bottom-0 left-0 w-full z-50 md:max-w-md md:left-auto">
+          <BottomNav 
+            view={currentView} 
+            setView={handleSetView} 
+            cartCount={cart.length} 
+          />
+        </div>
       )}
     </div>
   );
