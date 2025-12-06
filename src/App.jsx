@@ -4,7 +4,7 @@ import { Search, ShoppingBag, Store, User, Bike, AlertCircle, Database, ChevronL
 
 // --- IMPORTS ---
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import Login from './components/Auth/Login'; 
+import Login from './components/Auth/Login';
 import HomeView from './components/Home/HomeView';
 import Pabili from './components/Pabili/Pabili';
 import CartView from './components/Cart/CartView';
@@ -20,12 +20,24 @@ import TransactionsView from './components/Transactions/TransactionsView';
 import CoinsView from './components/Coin/CoinsView';
 import CoinDisplay from './components/Coin/CoinDisplay';
 
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) return null; // Or spinner, but AppContent handles main loading
+
+  if (!isAuthenticated) {
+    console.log("[ProtectedRoute] Denied. Redirecting to login.");
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
+
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const [cart, setCart] = useState([]);
 
   const location = useLocation();
@@ -51,7 +63,7 @@ function AppContent() {
   };
 
   const handleSetView = (viewName) => {
-    switch(viewName) {
+    switch (viewName) {
       case 'home': navigate('/'); break;
       case 'pabili': navigate('/pabili'); break;
       case 'cart': navigate('/cart'); break;
@@ -62,7 +74,7 @@ function AppContent() {
       case 'food': navigate('/food'); break;
       case 'transactions': navigate('/transactions'); break;
       case 'coins': navigate('/coins'); break;
-      case 'addresses': navigate('/addresses'); break; 
+      case 'addresses': navigate('/addresses'); break;
       case 'address-editor': navigate('/address-editor'); break;
       default: navigate('/');
     }
@@ -82,18 +94,19 @@ function AppContent() {
   };
 
   const currentView = getCurrentView();
-  
+
   // UPDATED: Added 'pabili', 'stores', 'rides' to the exclusion list so they don't show the orange header
   const showMainHeader = !['cart', 'food', 'wallet', 'transactions', 'address-editor', 'addresses', 'coins', 'login', 'pabili', 'stores', 'rides'].includes(currentView);
-  
+
   const hideNavPaths = ['/login'];
   const showBottomNav = !hideNavPaths.includes(location.pathname);
 
-  const ProtectedRoute = ({ children }) => {
-    const token = sessionStorage.getItem('token');
-    if (!token) return <Navigate to="/login" replace />;
-    return children;
-  };
+  // Debug logs for render
+  console.log(`[App] Render. Path: ${location.pathname}, Loading: ${loading}, Auth: ${isAuthenticated}`);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div></div>;
+  }
 
   const handleAddToCart = (item) => {
     setCart([...cart, item]);
@@ -102,7 +115,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl relative overflow-hidden font-sans">
-      
+
       {/* --- HEADER --- */}
       {showMainHeader && (
         <div className="bg-orange-600 text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-40">
@@ -114,17 +127,17 @@ function AppContent() {
             ) : (
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                <input 
-                  type="text" placeholder="What are you craving?" 
+                <input
+                  type="text" placeholder="What are you craving?"
                   className="w-full py-2 pl-9 pr-3 rounded-xl text-gray-800 text-sm focus:outline-none"
                   value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 />
               </div>
             )}
-            
+
             <div className="flex items-center gap-2">
               <CoinDisplay onClick={() => navigate('/coins')} />
-              <button onClick={() => user ? navigate('/profile') : navigate('/login')} 
+              <button onClick={() => user ? navigate('/profile') : navigate('/login')}
                 className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-xs border border-white/30">
                 {user ? user.username[0].toUpperCase() : <User size={16} />}
               </button>
@@ -137,27 +150,23 @@ function AppContent() {
       <div className="p-0"> {/* Removed padding to allow full-width headers in components */}
         <Routes>
           <Route path="/login" element={<Login />} />
-          
+
           <Route path="/" element={
-            <ProtectedRoute>
-              <div className="p-4">
-                <HomeView 
-                  user={user} 
-                  setView={handleSetView}
-                  restaurants={restaurants} 
-                  loading={loading}
-                />
-              </div>
-            </ProtectedRoute>
+            <div className="p-4">
+              <HomeView
+                user={user}
+                setView={handleSetView}
+                restaurants={restaurants}
+                loading={loading}
+              />
+            </div>
           } />
-          
-          <Route path="/pabili" element={<ProtectedRoute><Pabili /></ProtectedRoute>} />
-          <Route path="/pabili/store/:id" element={<ProtectedRoute><Pabili /></ProtectedRoute>} />
-          
+
+          <Route path="/pabili" element={<Pabili />} />
+          <Route path="/pabili/store/:id" element={<Pabili />} />
+
           <Route path="/cart" element={
-            <ProtectedRoute>
-              <div className="p-4"><CartView cart={cart} setCart={setCart} setView={handleSetView} /></div>
-            </ProtectedRoute>
+            <div className="p-4"><CartView cart={cart} setCart={setCart} setView={handleSetView} /></div>
           } />
 
           <Route path="/profile" element={
@@ -167,28 +176,24 @@ function AppContent() {
           } />
 
           <Route path="/food" element={
-            <ProtectedRoute>
-               <FoodView 
-                 setView={handleSetView} 
-                 restaurants={restaurants} 
-                 setActiveRestaurant={() => {}} 
-              />
-            </ProtectedRoute>
+            <FoodView
+              setView={handleSetView}
+              restaurants={restaurants}
+              setActiveRestaurant={() => { }}
+            />
           } />
 
           <Route path="/wallet" element={<ProtectedRoute><div className="p-4"><WalletView /></div></ProtectedRoute>} />
           <Route path="/transactions" element={<ProtectedRoute><div className="p-4"><TransactionsView /></div></ProtectedRoute>} />
-          
-          <Route path="/rides" element={<ProtectedRoute><RidesView setView={handleSetView} /></ProtectedRoute>} />
+
+          <Route path="/rides" element={<RidesView setView={handleSetView} />} />
           <Route path="/stores" element={
-            <ProtectedRoute>
-              <StoresView 
-                setView={handleSetView} 
-                addToCart={handleAddToCart} 
-              />
-            </ProtectedRoute>
+            <StoresView
+              setView={handleSetView}
+              addToCart={handleAddToCart}
+            />
           } />
-          
+
           <Route path="/coins" element={<ProtectedRoute><div className="p-4"><CoinsView setView={handleSetView} /></div></ProtectedRoute>} />
           <Route path="/addresses" element={<ProtectedRoute><div className="p-4"><SavedAddresses setView={handleSetView} /></div></ProtectedRoute>} />
           <Route path="/address-editor" element={<ProtectedRoute><div className="p-4"><AddressEditor setView={handleSetView} /></div></ProtectedRoute>} />
@@ -200,10 +205,10 @@ function AppContent() {
       {/* --- BOTTOM NAVIGATION --- */}
       {showBottomNav && (
         <div className="fixed bottom-0 left-0 w-full z-50 md:max-w-md md:left-auto">
-          <BottomNav 
-            view={currentView} 
-            setView={handleSetView} 
-            cartCount={cart.length} 
+          <BottomNav
+            view={currentView}
+            setView={handleSetView}
+            cartCount={cart.length}
           />
         </div>
       )}

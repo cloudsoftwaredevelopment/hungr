@@ -11,19 +11,25 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Check browser storage for existing session
     const token = sessionStorage.getItem('accessToken');
     const savedUser = sessionStorage.getItem('user');
-    
+
+    console.log("[AuthContext] Checking session...", { tokenPresent: !!token, userPresent: !!savedUser });
+
     if (token && savedUser) {
       try {
-          setUser(JSON.parse(savedUser));
-          setIsAuthenticated(true);
+        const parsedUser = JSON.parse(savedUser);
+        console.log("[AuthContext] Session restored for:", parsedUser.email);
+        setUser(parsedUser);
+        setIsAuthenticated(true);
       } catch (e) {
-          sessionStorage.clear();
+        console.error("[AuthContext] Failed to parse user data:", e);
+        sessionStorage.clear();
       }
-    } 
-    
+    } else {
+      console.log("[AuthContext] No session found.");
+    }
+
     setLoading(false);
   }, []);
 
@@ -34,9 +40,9 @@ export const AuthProvider = ({ children }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      
+
       const data = await res.json();
-      
+
       if (data.success) {
         // 2. Success! Save REAL user data from MariaDB
         sessionStorage.setItem('accessToken', data.data.accessToken);
@@ -45,9 +51,9 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
         return { success: true };
       }
-      
+
       return { success: false, error: data.error || 'Invalid credentials' };
-      
+
     } catch (err) {
       console.error("Login Connection Error:", err);
       return { success: false, error: "Server connection failed. Please try again." };

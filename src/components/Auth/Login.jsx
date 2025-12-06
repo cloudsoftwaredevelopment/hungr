@@ -24,9 +24,11 @@ export default function Login() {
       const data = await res.json();
 
       if (data.success) {
-        sessionStorage.setItem('token', data.data.token);
+        console.log("[Login] Success! Saving session...", data.data);
+        sessionStorage.setItem('accessToken', data.data.accessToken);
         sessionStorage.setItem('user', JSON.stringify(data.data));
-        window.location.href = '/hungr/'; 
+        console.log("[Login] Redirecting to /hungr/");
+        window.location.href = '/hungr/';
       } else {
         setError(data.error || 'Login failed');
       }
@@ -40,14 +42,14 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 font-sans">
       <div className="w-full max-w-md bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
-        
+
         {/* Header */}
         <div className="text-center mb-6 flex flex-col items-center">
           {/* Logo Only */}
           <div className="flex items-center justify-center">
-            <img 
-              src="https://nfcrevolution.com/hungr/registration/image_0.png" 
-              alt="Hungr Official Logo" 
+            <img
+              src="https://nfcrevolution.com/hungr/registration/image_0.png"
+              alt="Hungr Official Logo"
               className="h-32 w-auto object-contain"
             />
           </div>
@@ -60,13 +62,13 @@ export default function Login() {
         )}
 
         <form onSubmit={handleLogin} className="space-y-5">
-          
+
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-gray-400 uppercase ml-1 tracking-wide">Email Address</label>
             <div className="relative group">
               <User className="absolute left-4 top-3.5 text-gray-400 group-focus-within:text-orange-500 transition-colors" size={20} />
-              <input 
-                type="email" 
+              <input
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 pl-12 pr-4 text-gray-800 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 focus:outline-none transition-all placeholder:text-gray-400 font-medium"
@@ -80,8 +82,8 @@ export default function Login() {
             <label className="text-xs font-bold text-gray-400 uppercase ml-1 tracking-wide">Password</label>
             <div className="relative group">
               <Lock className="absolute left-4 top-3.5 text-gray-400 group-focus-within:text-orange-500 transition-colors" size={20} />
-              <input 
-                type="password" 
+              <input
+                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 pl-12 pr-4 text-gray-800 focus:bg-white focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 focus:outline-none transition-all placeholder:text-gray-400 font-medium"
@@ -91,8 +93,8 @@ export default function Login() {
             </div>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-orange-200 flex items-center justify-center gap-2 transition-all mt-4 active:scale-[0.98]"
           >
@@ -101,9 +103,9 @@ export default function Login() {
         </form>
 
         <div className="mt-8 text-center">
-            <p className="text-gray-400 text-sm">
-                Don't have an account? <span className="text-orange-600 font-bold cursor-pointer hover:underline">Register (Closed)</span>
-            </p>
+          <p className="text-gray-400 text-sm">
+            Don't have an account? <span className="text-orange-600 font-bold cursor-pointer hover:underline">Register (Closed)</span>
+          </p>
         </div>
       </div>
     </div>
