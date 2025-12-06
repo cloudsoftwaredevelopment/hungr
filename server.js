@@ -293,6 +293,56 @@ apiRouter.delete('/merchant/discounts/:id', verifyToken, async (req, res) => {
 });
 
 // Customer Auth
+// Customer Addresses
+// Real Address Persistence
+apiRouter.get('/users/addresses', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const results = await db.query('SELECT * FROM user_addresses WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+        sendSuccess(res, results);
+    } catch (err) {
+        sendError(res, 500, 'DB Error', 'DB_ERROR', err);
+    }
+});
+
+apiRouter.post('/users/addresses', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { label, address, latitude, longitude, is_default } = req.body;
+
+        if (!label || !address) return sendError(res, 400, "Label and Address required");
+
+        // Upsert: If label exists for user (e.g. "Home"), update it. uniqueness constrained by (user_id, label)
+        const sql = `INSERT INTO user_addresses (user_id, label, address, latitude, longitude, is_default) 
+                         VALUES (?, ?, ?, ?, ?, ?) 
+                         ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)`;
+
+        const params = [userId, label, address, latitude || null, longitude || null, is_default ? 1 : 0];
+
+        const result = await db.query(sql, params);
+
+        sendSuccess(res, { id: result.insertId, label, address }, "Address saved");
+    } catch (err) {
+        sendError(res, 500, "Save failed", "DB_ERROR", err);
+    }
+});
+
+apiRouter.delete('/users/addresses/:id', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const addressId = req.params.id;
+
+        // Security: Only delete if address belongs to user
+        const result = await db.query('DELETE FROM user_addresses WHERE id = ? AND user_id = ?', [addressId, userId]);
+
+        if (result.affectedRows === 0) return sendError(res, 404, "Address not found or unauthorized");
+
+        sendSuccess(res, null, "Address deleted");
+    } catch (err) {
+        sendError(res, 500, "Delete failed", "DB_ERROR", err);
+    }
+});
+
 apiRouter.post('/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -318,6 +368,25 @@ apiRouter.post('/auth/login', async (req, res) => {
         sendSuccess(res, { id: user.id, username: user.username, email: user.email, token, accessToken: token });
     } catch (err) {
         sendError(res, 500, "Login failed", "AUTH_ERROR", err);
+    }
+});
+
+// PUBLIC: Get Restaurant Menu
+apiRouter.get('/restaurants/:id/menu', async (req, res) => {
+    try {
+        const restaurantId = req.params.id;
+
+        // Fetch restaurant details
+        const [restaurantRows] = await db.execute('SELECT * FROM restaurants WHERE id = ?', [restaurantId]);
+        if (restaurantRows.length === 0) return sendError(res, 404, 'Restaurant not found');
+        const restaurant = restaurantRows[0];
+
+        // Fetch menu items
+        const menuItems = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? AND is_available = 1 ORDER BY category, name', [restaurantId]);
+
+        sendSuccess(res, { restaurant, menu: menuItems });
+    } catch (err) {
+        sendError(res, 500, 'DB Error', 'DB_ERROR', err);
     }
 });
 

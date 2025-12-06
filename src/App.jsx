@@ -14,6 +14,7 @@ import AddressEditor from './components/Address/AddressEditor';
 import RidesView from './components/Rides/RidesView';
 import StoresView from './components/Stores/StoresView';
 import FoodView from './components/Food/FoodView';
+import RestaurantView from './components/Restaurant/RestaurantView';
 import BottomNav from './components/Navigation/BottomNav';
 import WalletView from './components/Wallet/WalletView';
 import TransactionsView from './components/Transactions/TransactionsView';
@@ -157,6 +158,7 @@ function AppContent() {
                 user={user}
                 setView={handleSetView}
                 restaurants={restaurants}
+                setActiveRestaurant={() => { }}
                 loading={loading}
               />
             </div>
@@ -182,6 +184,8 @@ function AppContent() {
               setActiveRestaurant={() => { }}
             />
           } />
+
+          <Route path="/restaurant/:id" element={<RestaurantView />} />
 
           <Route path="/wallet" element={<ProtectedRoute><div className="p-4"><WalletView /></div></ProtectedRoute>} />
           <Route path="/transactions" element={<ProtectedRoute><div className="p-4"><TransactionsView /></div></ProtectedRoute>} />
