@@ -13,6 +13,7 @@ import SavedAddresses from './components/Address/SavedAddresses';
 import AddressEditor from './components/Address/AddressEditor';
 import RidesView from './components/Rides/RidesView';
 import StoresView from './components/Stores/StoresView';
+import StoreDetailView from './components/Stores/StoreDetailView';
 import FoodView from './components/Food/FoodView';
 import RestaurantView from './components/Restaurant/RestaurantView';
 import BottomNav from './components/Navigation/BottomNav';
@@ -196,6 +197,9 @@ function AppContent() {
               setView={handleSetView}
               addToCart={handleAddToCart}
             />
+          } />
+          <Route path="/stores/:id" element={
+            <StoreDetailView addToCart={handleAddToCart} />
           } />
 
           <Route path="/coins" element={<ProtectedRoute><div className="p-4"><CoinsView setView={handleSetView} /></div></ProtectedRoute>} />
