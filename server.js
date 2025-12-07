@@ -129,6 +129,25 @@ const pool = mysql.createPool({
                 FOREIGN KEY (order_id) REFERENCES store_paid_orders(id) ON DELETE CASCADE
              ) ENGINE=InnoDB;
         `);
+
+        await poolPromise.execute(`
+            CREATE TABLE IF NOT EXISTS ride_orders (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                pickup_lat DECIMAL(10, 8),
+                pickup_lon DECIMAL(11, 8),
+                pickup_address TEXT,
+                dropoff_lat DECIMAL(10, 8),
+                dropoff_lon DECIMAL(11, 8),
+                dropoff_address TEXT,
+                fare DECIMAL(10,2) NOT NULL,
+                distance_km DECIMAL(10,2),
+                status ENUM('pending', 'accepted', 'in_transit', 'completed', 'cancelled') DEFAULT 'pending',
+                rider_id INT DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB;
+        `);
         console.log("Pabili and Store tables checked/created.");
     } catch (e) {
         console.error("Table Init Error:", e);
@@ -202,37 +221,24 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             const orderId = orderResult.insertId;
 
             // 2. Insert Items
-            for (const item of items) {
-                await db.execute(
-                    `INSERT INTO store_order_items (order_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)`,
-                    [orderId, item.id, item.name, item.quantity, item.price]
-                );
+            // 2. Insert Items
+            if (items && items.length > 0) {
+                const itemValues = items.map(i => [orderId, i.id, i.name, i.quantity, i.price || 0]);
+                await db.query('INSERT INTO store_order_items (order_id, product_id, product_name, quantity, price) VALUES ?', [itemValues]);
             }
 
             // 3. Rider Allocation (Haversine)
-            // Fetch Store Coords (Mocking store coords if col missing, else query store)
-            // Assuming stores have latitude/longitude from previous pabili/search query code
+            // Fetch Store Coords (Mocking if missing)
             const [storeRows] = await db.execute('SELECT latitude, longitude FROM stores WHERE id = ?', [storeId]);
-            const storeLat = storeRows[0]?.latitude || 14.5995;
-            const storeLong = storeRows[0]?.longitude || 120.9842;
+            const storeLoc = storeRows[0] || { latitude: 10.7202, longitude: 122.5621 }; // Default Iloilo
 
-            // Get Online Riders
-            // Assuming table 'riders' with latitude, longitude, is_online
-            // If riders table doesn't have lat/long, we mock it. 
-            // Checking server.js earlier: "mock matching logic" was used.
-            // I will implement a query that gets riders and calculates distance in JS (or SQL if simple).
-            // JS Haversine is requested by user ("using haversine algorithm").
+            const [onlineRiders] = await db.execute('SELECT id, name, latitude, longitude FROM riders WHERE is_online = 1');
 
-            const riders = await db.query('SELECT r.id, r.name, r.latitude, r.longitude FROM riders r WHERE r.is_online = 1');
-
-            // Calculate distances
-            const ridersWithDistance = riders.map(r => ({
+            const ridersWithDistance = onlineRiders.map(r => ({
                 ...r,
-                distance: getDistance(storeLat, storeLong, r.latitude || 14.6, r.longitude || 121.0)
-            }));
+                distance: getDistance(storeLoc.latitude, storeLoc.longitude, r.latitude, r.longitude)
+            })).sort((a, b) => a.distance - b.distance);
 
-            // Sort by distance and take top 10
-            ridersWithDistance.sort((a, b) => a.distance - b.distance);
             const closestRiders = ridersWithDistance.slice(0, 10);
 
             // 4. Notify Riders (Mock Notification)
@@ -243,6 +249,33 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             console.log(`[StoreOrder #${orderId}] Notifying Store Merchant of new order.`);
 
             return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Order placed successfully");
+
+        } else if (orderType === 'ride') {
+            // === HANDLING RIDE ORDER ===
+            const { pickup, dropoff, fare, distance } = req.body;
+
+            const [resOrder] = await db.execute(
+                `INSERT INTO ride_orders 
+                (user_id, pickup_lat, pickup_lon, pickup_address, dropoff_lat, dropoff_lon, dropoff_address, fare, distance_km, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+                [userId, pickup.lat, pickup.lon, pickup.address, dropoff.lat, dropoff.lon, dropoff.address, fare, distance]
+            );
+            const orderId = resOrder.insertId;
+
+            // Rider Allocation (Haversine from Pickup Location)
+            const [onlineRiders] = await db.execute('SELECT id, name, latitude, longitude FROM riders WHERE is_online = 1');
+
+            const ridersWithDistance = onlineRiders.map(r => ({
+                ...r,
+                distance: getDistance(pickup.lat, pickup.lon, r.latitude, r.longitude)
+            })).sort((a, b) => a.distance - b.distance);
+
+            const closestRiders = ridersWithDistance.slice(0, 10);
+
+            console.log(`[RideOrder #${orderId}] Booking Request. Notifying 10 closest riders to Pickup Point:`);
+            closestRiders.forEach(r => console.log(` - Rider ${r.name} (${r.distance.toFixed(2)}km away)`));
+
+            return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Ride booked successfully");
 
         } else {
             // === HANDLING RESTAURANT ORDER (EXISTING LOGIC PLEASE IMPLEMENT IF MISSING OR USE MOCK) ===

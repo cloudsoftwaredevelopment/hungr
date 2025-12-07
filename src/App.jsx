@@ -100,7 +100,7 @@ function AppContent() {
   // UPDATED: Added 'pabili', 'stores', 'rides' to the exclusion list so they don't show the orange header
   const showMainHeader = !['cart', 'food', 'wallet', 'transactions', 'address-editor', 'addresses', 'coins', 'login', 'pabili', 'stores', 'rides'].includes(currentView);
 
-  const hideNavPaths = ['/login'];
+  const hideNavPaths = ['/login', '/rides', '/address-editor']; // Added rides and address-editor
   const showBottomNav = !hideNavPaths.includes(location.pathname);
 
   // Debug logs for render
@@ -116,7 +116,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 pb-20 md:max-w-md md:mx-auto md:shadow-xl relative overflow-hidden font-sans">
+    <div className={`min-h-screen bg-gray-50 text-gray-800 ${showBottomNav ? 'pb-20' : ''} md:max-w-md md:mx-auto md:shadow-xl relative overflow-hidden font-sans`}>
 
       {/* --- HEADER --- */}
       {showMainHeader && (
