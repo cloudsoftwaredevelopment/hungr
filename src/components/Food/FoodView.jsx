@@ -60,8 +60,8 @@ export default function FoodView({ restaurants = [], setActiveRestaurant }) {
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
                             className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${activeCategory === cat
-                                    ? 'bg-orange-600 text-white border-orange-600 shadow-md'
-                                    : 'bg-white text-gray-500 border-gray-200 hover:border-orange-200 hover:text-orange-600'
+                                ? 'bg-orange-600 text-white border-orange-600 shadow-md'
+                                : 'bg-white text-gray-500 border-gray-200 hover:border-orange-200 hover:text-orange-600'
                                 }`}
                         >
                             {cat}
@@ -92,7 +92,7 @@ export default function FoodView({ restaurants = [], setActiveRestaurant }) {
                                         src={restaurant.image_url}
                                         alt={restaurant.name}
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                        onError={(e) => e.target.src = 'https://via.placeholder.com/400x200?text=Food'}
+                                        onError={(e) => e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+'}
                                     />
                                     <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm flex items-center gap-0.5">
                                         <Star size={10} className="text-orange-500 fill-orange-500" /> {restaurant.rating}

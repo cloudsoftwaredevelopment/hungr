@@ -18,23 +18,23 @@ export default function StoreDetailView({ addToCart }) {
         try {
             // 1. Fetch Store Info
             // Note: In a real optimized app we might pass this via state, but fetching ensures freshness
-            const storeRes = await fetch(`https://nfcrevolution.com/hungr/api/pabili/stores`);
+            const storeRes = await fetch(`/hungr/api/pabili/stores`);
             const storeData = await storeRes.json();
             // Mock finding the specific store from the list for now if single endpoint doesn't exist
             const foundStore = storeData.data.find(s => s.id == id);
             setStore(foundStore);
 
             // 2. Fetch Products
-            const prodRes = await fetch(`https://nfcrevolution.com/hungr/api/stores/${id}/products`);
+            const prodRes = await fetch(`/hungr/api/stores/${id}/products`);
             const prodData = await prodRes.json();
             if (prodData.success) {
                 setProducts(prodData.data);
             } else {
                 // Mock products if API fails or is empty for dev
                 setProducts([
-                    { id: 101, name: "Premium Widget", price: 150.00, image: "https://via.placeholder.com/150", description: "High quality widget for all needs." },
-                    { id: 102, name: "Super Gadget", price: 2999.00, image: "https://via.placeholder.com/150", description: "Latest tech gadget." },
-                    { id: 103, name: "Daily Necessity", price: 50.00, image: "https://via.placeholder.com/150", description: "Essential daily item." },
+                    { id: 101, name: "Premium Widget", price: 150.00, image: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+", description: "High quality widget for all needs." },
+                    { id: 102, name: "Super Gadget", price: 2999.00, image: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+", description: "Latest tech gadget." },
+                    { id: 103, name: "Daily Necessity", price: 50.00, image: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+", description: "Essential daily item." },
                 ]);
             }
 
@@ -70,7 +70,7 @@ export default function StoreDetailView({ addToCart }) {
             {/* Header Image */}
             <div className="relative h-48 bg-gray-300">
                 <img
-                    src={store?.image_url || "https://via.placeholder.com/800x400"}
+                    src={store?.image_url || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"}
                     className="w-full h-full object-cover"
                     alt={store?.name}
                 />

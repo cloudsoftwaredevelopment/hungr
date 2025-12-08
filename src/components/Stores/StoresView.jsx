@@ -18,7 +18,7 @@ export default function StoresView({ addToCart }) {
     setLoading(true);
     try {
       // Fetching from pabili/stores for now as it returns the stores table content
-      const response = await fetch('https://nfcrevolution.com/hungr/api/pabili/stores');
+      const response = await fetch('/hungr/api/pabili/stores');
       const data = await response.json();
       if (data.success) setStores(data.data);
     } catch (e) { console.error(e); }
@@ -58,8 +58,8 @@ export default function StoresView({ addToCart }) {
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${activeCategory === cat
-                  ? 'bg-orange-600 text-white border-orange-600 shadow-md'
-                  : 'bg-white text-gray-500 border-gray-200 hover:text-orange-600'
+                ? 'bg-orange-600 text-white border-orange-600 shadow-md'
+                : 'bg-white text-gray-500 border-gray-200 hover:text-orange-600'
                 }`}
             >
               {cat}
@@ -85,9 +85,9 @@ export default function StoresView({ addToCart }) {
                 >
                   <div className="h-28 bg-gray-200 relative">
                     <img
-                      src={store.image_url || "https://via.placeholder.com/400x200"}
+                      src={store.image_url || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"}
                       className="w-full h-full object-cover"
-                      onError={(e) => e.target.src = 'https://via.placeholder.com/400x200'}
+                      onError={(e) => e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+'}
                       alt={store.name}
                     />
                     {/* Mock Delivery Time if not in DB */}

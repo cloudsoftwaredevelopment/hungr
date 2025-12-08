@@ -14,10 +14,22 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+    path: '/hungr/socket.io',
+    cors: {
+        origin: ['http://localhost:3000', 'http://localhost:5173', 'https://nfcrevolution.com'],
+        methods: ["GET", "POST"],
+        credentials: true
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,7 +58,10 @@ app.use((req, res, next) => {
 // --- STATIC FILES ---
 // Mount dist to /hungr so assets load correctly
 app.use('/hungr', express.static(path.join(__dirname, 'dist')));
-// Also mount to root as a backup
+// Explicitly serve Merchant App
+app.use('/hungrmerchant', express.static(path.join(__dirname, '../hungr-merchant/dist')));
+
+// Also mount to root as a backup (for customer app usually)
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // --- DATABASE CONNECTION ---
@@ -100,6 +115,17 @@ const pool = mysql.createPool({
                 rider_id INT NOT NULL,
                 reason TEXT,
                 cancelled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB;
+        `);
+        await poolPromise.execute(`
+            CREATE TABLE IF NOT EXISTS declined_orders (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                order_id INT NOT NULL,
+                order_type ENUM('food', 'store') DEFAULT 'food',
+                item_name VARCHAR(255),
+                quantity INT,
+                reason TEXT,
+                declined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB;
         `);
         await poolPromise.execute(`
@@ -229,10 +255,16 @@ app.post('/api/orders', verifyToken, async (req, res) => {
 
             // 3. Rider Allocation (Haversine)
             // Fetch Store Coords (Mocking if missing)
-            const [storeRows] = await db.execute('SELECT latitude, longitude FROM stores WHERE id = ?', [storeId]);
-            const storeLoc = storeRows[0] || { latitude: 10.7202, longitude: 122.5621 }; // Default Iloilo
+            // Note: 'stores' table might not have lat/long yet, using defaults if missing.
+            const [storeRows] = await db.execute('SELECT * FROM stores WHERE id = ?', [storeId]);
+            const storeData = storeRows[0] || {};
+            const storeLoc = {
+                latitude: storeData.latitude || 10.7202,
+                longitude: storeData.longitude || 122.5621
+            };
 
-            const [onlineRiders] = await db.execute('SELECT id, name, latitude, longitude FROM riders WHERE is_online = 1');
+            // Use correct columns for riders: current_latitude, current_longitude
+            const [onlineRiders] = await db.execute('SELECT id, name, current_latitude as latitude, current_longitude as longitude FROM riders WHERE is_online = 1');
 
             const ridersWithDistance = onlineRiders.map(r => ({
                 ...r,
@@ -245,8 +277,20 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             console.log(`[StoreOrder #${orderId}] Payment Successful. Notifying 10 closest riders:`);
             closestRiders.forEach(r => console.log(` - Rider ${r.name} (${r.distance.toFixed(2)}km away)`));
 
-            // 5. Notify Merchant (Mock)
+            // 5. Notify Merchant (Mock -> Real Socket)
             console.log(`[StoreOrder #${orderId}] Notifying Store Merchant of new order.`);
+
+            // Emit to all connected clients (or use rooms for specific merchants in future)
+            io.emit('new_order', {
+                id: orderId,
+                status: 'pending',
+                total_amount: total,
+                type: 'store',
+                customer_name: 'New Customer', // You might want to fetch this
+                created_at: new Date(),
+                items: items,
+                delivery_address: deliveryAddress
+            });
 
             return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Order placed successfully");
 
@@ -278,21 +322,53 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Ride booked successfully");
 
         } else {
-            // === HANDLING RESTAURANT ORDER (EXISTING LOGIC PLEASE IMPLEMENT IF MISSING OR USE MOCK) ===
-            // Since the original file didn't show the full /api/orders implementation in the view (it was likely cut off or missing), 
-            // I will insert a basic mocked food order handler to ensure it doesn't break normal flow.
+            // === HANDLING RESTAURANT ORDER ===
+            if (!restaurantId) return sendError(res, 400, "Restaurant ID required");
 
-            // For now, let's just create a dummy success response for food orders to keep app working
-            // In a real scenario I would implement the full food order logic.
-            // But the user focus is Store view.
+            // CHECK RESTAURANT AVAILABILITY (Offline Check)
+            const [restCheck] = await db.execute('SELECT is_available FROM restaurants WHERE id = ?', [restaurantId]);
+            if (!restCheck.length || restCheck[0].is_available === 0) {
+                return sendError(res, 400, "Restaurant is currently offline/closed.");
+            }
 
-            // Check if orders table exists and insert to keep data integrity
+            // Fetch user address for delivery
+            const [addrRows] = await db.execute('SELECT * FROM user_addresses WHERE user_id = ? AND is_default = 1', [userId]);
+            const deliveryAddress = addrRows.length > 0 ? addrRows[0].address : "User Location";
+
+            // Create Order
             const [resOrder] = await db.execute(
                 `INSERT INTO orders (user_id, restaurant_id, total_amount, status, created_at) VALUES (?, ?, ?, 'pending', NOW())`,
-                [userId, restaurantId, total]
+                [userId, restaurantId, total || 0]
             );
 
-            return sendSuccess(res, { orderId: resOrder.insertId }, "Food Order placed (Mock)");
+            const orderId = resOrder.insertId;
+
+            // INSERT ORDER ITEMS
+            if (items && items.length > 0) {
+                for (const item of items) {
+                    const itemId = item.id || item.menu_item_id;
+                    if (!itemId) continue;
+                    await db.execute(
+                        `INSERT INTO order_items (order_id, menu_item_id, quantity, price_at_time) VALUES (?, ?, ?, ?)`,
+                        [orderId, itemId, item.quantity || 1, item.price || 0]
+                    );
+                }
+            }
+
+            // Emit socket event with FULL details (including items) so merchant dashboard can display it immediately
+            io.emit('new_order', {
+                id: orderId,
+                status: 'pending',
+                total_amount: total,
+                type: 'food',
+                customer_name: 'Customer', // In real app, fetch user name
+                created_at: new Date(),
+                restaurant_id: restaurantId,
+                items: items || [], // Pass the original items array from request so UI has data
+                delivery_address: deliveryAddress || 'TBA'
+            });
+
+            return sendSuccess(res, { orderId: orderId }, "Food Order placed successfully");
         }
     } catch (err) {
         sendError(res, 500, "Order Creation Failed", "DB_ERROR", err);
@@ -508,6 +584,99 @@ app.post('/api/riders/:id/orders/:orderId/accept', verifyToken, async (req, res)
 });
 
 
+// 5. Get Rider Wallet Balance
+app.get('/api/riders/:id/wallet', verifyToken, async (req, res) => {
+    try {
+        const riderId = req.params.id;
+
+        // Get rider's user_id first
+        const [riderRows] = await db.execute('SELECT user_id FROM riders WHERE id = ?', [riderId]);
+        if (riderRows.length === 0) return sendError(res, 404, "Rider not found");
+
+        const userId = riderRows[0].user_id;
+
+        // Get wallet balance
+        const [walletRows] = await db.execute('SELECT balance FROM wallets WHERE user_id = ?', [userId]);
+        const balance = walletRows.length > 0 ? parseFloat(walletRows[0].balance) : 0;
+
+        sendSuccess(res, { balance }, "Wallet balance retrieved");
+    } catch (err) {
+        console.error("Wallet fetch error:", err);
+        sendError(res, 500, "Failed to fetch wallet", "DB_ERROR", err);
+    }
+});
+
+// 6. Get Rider Earnings History
+app.get('/api/riders/:id/earnings', verifyToken, async (req, res) => {
+    try {
+        const riderId = req.params.id;
+
+        // Fetch completed orders assigned to this rider
+        const [completedOrders] = await db.execute(`
+            SELECT 
+                o.id,
+                o.total_amount,
+                o.created_at,
+                o.status,
+                s.name as store_name
+            FROM store_paid_orders o
+            LEFT JOIN shops s ON o.store_id = s.id
+            WHERE o.rider_id = ? AND o.status IN ('completed', 'delivered', 'assigned')
+            ORDER BY o.created_at DESC
+            LIMIT 50
+        `, [riderId]);
+
+        // Calculate earnings summary
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        weekAgo.setHours(0, 0, 0, 0);
+
+        let todayEarnings = 0;
+        let weekEarnings = 0;
+        let totalEarnings = 0;
+
+        // Assume rider fee is 10% of order total (or a flat fee, adjust as needed)
+        const RIDER_FEE_PERCENT = 0.15; // 15%
+
+        completedOrders.forEach(order => {
+            const fee = parseFloat(order.total_amount) * RIDER_FEE_PERCENT;
+            const orderDate = new Date(order.created_at);
+
+            totalEarnings += fee;
+
+            if (orderDate >= today) {
+                todayEarnings += fee;
+            }
+            if (orderDate >= weekAgo) {
+                weekEarnings += fee;
+            }
+        });
+
+        sendSuccess(res, {
+            summary: {
+                today: todayEarnings.toFixed(2),
+                week: weekEarnings.toFixed(2),
+                total: totalEarnings.toFixed(2),
+                deliveryCount: completedOrders.length
+            },
+            deliveries: completedOrders.map(o => ({
+                id: o.id,
+                storeName: o.store_name || 'Unknown Store',
+                amount: (parseFloat(o.total_amount) * RIDER_FEE_PERCENT).toFixed(2),
+                date: o.created_at,
+                status: o.status
+            }))
+        }, "Earnings retrieved");
+    } catch (err) {
+        console.error("Earnings fetch error:", err);
+        sendError(res, 500, "Failed to fetch earnings", "DB_ERROR", err);
+    }
+});
+
+
 // ==========================================
 // 🏪 MERCHANT API
 // ==========================================
@@ -529,6 +698,18 @@ apiRouter.post('/merchant/login', async (req, res) => {
         sendSuccess(res, { id: merchant.id, name: merchant.name, email: merchant.email, phone_number: merchant.phone_number, restaurant_id: merchant.restaurant_id, accessToken: token });
     } catch (err) {
         sendError(res, 500, "Login failed", "AUTH_ERROR", err);
+    }
+});
+
+apiRouter.post('/merchant/status', verifyToken, async (req, res) => {
+    try {
+        const { isOnline } = req.body;
+        // Updating 'is_available' in restaurants table as a proxy for "Online/Offline"
+        await db.execute('UPDATE restaurants SET is_available = ? WHERE id = ?', [isOnline ? 1 : 0, req.user.restaurantId]);
+        sendSuccess(res, { isOnline }, "Status updated");
+    } catch (err) {
+        console.error("Status Update Failed", err);
+        sendError(res, 500, "Update failed");
     }
 });
 
@@ -568,10 +749,34 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
         } catch (ignore) { }
 
         // Fetch regular restaurant orders
-        const restQuery = `SELECT o.id, o.total_amount, o.status, o.created_at, u.username as customer_name, u.address as delivery_address, JSON_ARRAYAGG(JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time)) as items FROM orders o JOIN users u ON o.user_id = u.id JOIN order_items oi ON o.id = oi.order_id JOIN menu_items m ON oi.menu_item_id = m.id WHERE o.restaurant_id = ? GROUP BY o.id ORDER BY o.created_at DESC`;
+        // Fetch regular restaurant orders
+        const restQuery = `
+            SELECT o.id, o.total_amount, o.status, o.created_at, 
+            u.username as customer_name, 
+            u.address as delivery_address, 
+            JSON_ARRAYAGG(
+                JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time)
+            ) as items 
+            FROM orders o 
+            JOIN users u ON o.user_id = u.id 
+            JOIN order_items oi ON o.id = oi.order_id 
+            JOIN menu_items m ON oi.menu_item_id = m.id 
+            WHERE o.restaurant_id = ? 
+            GROUP BY o.id 
+            ORDER BY o.created_at DESC
+        `;
 
-        const [restRows] = await db.query(restQuery, [restaurantId]);
-        const restOrders = restRows.map(row => ({ ...row, items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items, type: 'food' }));
+        // Check if db.query returns [rows] or just rows. 
+        // Based on "restRows.map is not a function" error, I suspect db.query returns the rows array directly,
+        // so destructuring [restRows] assigns the *first row* to restRows, which is an object, not an array.
+        // Let's assume db.query returns the rows directly (custom helper).
+        const restRows = await db.query(restQuery, [restaurantId]);
+
+        const restOrders = Array.isArray(restRows) ? restRows.map(row => ({
+            ...row,
+            items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items,
+            type: 'food'
+        })) : [];
 
         sendSuccess(res, [...orders, ...restOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 
@@ -604,8 +809,10 @@ apiRouter.post('/merchant/verify-rider', verifyToken, async (req, res) => {
             sendError(res, 401, "Invalid Rider ID. Verification failed.");
         }
 
-    } catch (err) {
         sendError(res, 500, "Verification Error");
+    } catch (err) {
+        console.error("Verify Rider Error:", err);
+        sendError(res, 500, "Verification failed", "DB_ERROR", err);
     }
 });
 
@@ -613,7 +820,7 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
     try {
         const { restaurantId, role } = req.user;
         const orderId = req.params.id;
-        const { status, type } = req.body; // Added type to distinguish
+        const { status, type, reason } = req.body; // Added reason
 
         if (role !== 'merchant') return sendError(res, 403, 'Access denied');
 
@@ -624,9 +831,88 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
         const [result] = await db.execute(`UPDATE ${table} SET status = ? WHERE id = ? AND ${storeCol} = ?`, [status, orderId, restaurantId]);
 
         if (result.affectedRows === 0) return sendError(res, 404, 'Order not found');
+
+        // If status is 'cancelled' (which we use for decline here), insert into declined_orders
+        if (status === 'cancelled') {
+            // OLD WAY: Entire order declined
+            await db.execute('INSERT INTO declined_orders (order_id, order_type, reason, item_name) VALUES (?, ?, ?, ?)', [orderId, type || 'food', reason || 'Order Declined', 'ALL ITEMS']);
+        }
+
         sendSuccess(res, { id: orderId, status }, 'Status updated');
     } catch (err) {
         sendError(res, 500, 'Update failed');
+    }
+});
+
+apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        const orderId = req.params.id;
+        const { type, declinedItems, acceptedItems } = req.body;
+        // acceptedItems is just an array of IDs kept (optional, we mainly strictly need declinedItems to remove)
+
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+
+        const orderTable = type === 'store' ? 'store_paid_orders' : 'orders';
+        const itemTable = type === 'store' ? 'store_order_items' : 'order_items'; // store_order_items ID isPK? yes. order_items ID is PK? yes.
+        const storeCol = type === 'store' ? 'store_id' : 'restaurant_id';
+
+        // 1. Verify Order Ownership
+        const [orderCheck] = await db.execute(`SELECT id, total_amount FROM ${orderTable} WHERE id = ? AND ${storeCol} = ?`, [orderId, restaurantId]);
+        if (orderCheck.length === 0) return sendError(res, 404, 'Order not found');
+
+        // 2. Process Declined Items
+        if (declinedItems && declinedItems.length > 0) {
+            for (const item of declinedItems) {
+                // item: { id, name, price, quantity, reason }
+
+                // A. Insert into declined_orders
+                await db.execute(
+                    `INSERT INTO declined_orders (order_id, order_type, item_name, quantity, reason) VALUES (?, ?, ?, ?, ?)`,
+                    [orderId, type || 'food', item.name, item.quantity, item.reason]
+                );
+
+                // B. Remove from order_items table
+                // NOTE: 'id' passed here must be the PRIMARY KEY of the item table (order_items.id), NOT the menu_item_id
+                await db.execute(`DELETE FROM ${itemTable} WHERE id = ?`, [item.id]);
+            }
+        }
+
+        // 3. Recalculate Total
+        // We need to sum up remaining items
+        const [remainRows] = await db.query(`SELECT price, quantity FROM ${itemTable} WHERE order_id = ?`, [orderId]);
+        // Note: For food orders, 'price' is not in order_items directly in current schema? 
+        // Let's check schema:
+        // Food: order_items (order_id, menu_item_id, quantity, price_at_time) -> 'price_at_time' is the price.
+        // Store: store_order_items (order_id, product_id, product_name, quantity, price) -> 'price' is price.
+
+        const priceCol = type === 'store' ? 'price' : 'price_at_time';
+
+        // However, using query instead of execute might return array of rows differently.
+        // Let's use the 'db.query' helper I made which does [results] = ...
+
+        let newTotal = 0;
+        // Need to fetch properly because 'price' column name differs
+        const [remainingItems] = await db.execute(`SELECT quantity, ${priceCol} as price FROM ${itemTable} WHERE order_id = ?`, [orderId]);
+
+        remainingItems.forEach(i => {
+            newTotal += (parseFloat(i.price) * i.quantity);
+        });
+
+        // 4. Update Order
+        // If no items remain, status should be 'cancelled' (or all declined)
+        let newStatus = 'accepted';
+        if (remainingItems.length === 0) {
+            newStatus = 'cancelled';
+        }
+
+        await db.execute(`UPDATE ${orderTable} SET total_amount = ?, status = ? WHERE id = ?`, [newTotal, newStatus, orderId]);
+
+        sendSuccess(res, { id: orderId, status: newStatus, newTotal, remainingCount: remainingItems.length }, "Order processed");
+
+    } catch (err) {
+        console.error("Batch Process Error", err);
+        sendError(res, 500, "Processing failed", "DB_ERROR", err);
     }
 });
 
@@ -729,6 +1015,39 @@ apiRouter.delete('/merchant/discounts/:id', verifyToken, async (req, res) => {
 
 // Customer Auth
 // Customer Addresses
+
+apiRouter.get('/wallet', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        // Check if table exists first (or catch error)
+        try {
+            const [rows] = await db.execute('SELECT balance FROM wallets WHERE user_id = ?', [userId]);
+            const balance = rows.length > 0 ? rows[0].balance : 0.00;
+            sendSuccess(res, { balance });
+        } catch (e) {
+            // Table might not exist, return 0
+            sendSuccess(res, { balance: 0.00 });
+        }
+    } catch (err) {
+        sendError(res, 500, "DB Error", "DB_ERROR", err);
+    }
+});
+
+apiRouter.get('/coins', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        try {
+            const [rows] = await db.execute('SELECT balance FROM hungr_coins WHERE user_id = ?', [userId]);
+            const coins = rows.length > 0 ? rows[0].balance : 0;
+            sendSuccess(res, { coins });
+        } catch (e) {
+            sendSuccess(res, { coins: 0 });
+        }
+    } catch (err) {
+        sendError(res, 500, "DB Error", "DB_ERROR", err);
+    }
+});
+
 // Real Address Persistence
 apiRouter.get('/users/addresses', verifyToken, async (req, res) => {
     try {
@@ -838,6 +1157,7 @@ apiRouter.get('/restaurants', async (req, res) => {
 app.use('/api', apiRouter);
 app.use('/hungr/api', apiRouter); // Support subpath API calls
 
+
 // --- SPA CATCH-ALL (Fixes 404s) ---
 app.get('*', (req, res) => {
     // If it starts with /api or /hungr/api, it's a real 404 from the API
@@ -848,6 +1168,6 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT} (SPA Fallback Active)`);
+httpServer.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT} (SPA Fallback Active, Socket.io Ready)`);
 });

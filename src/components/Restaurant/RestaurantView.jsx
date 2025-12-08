@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Star, Clock, MapPin, ShoppingBag, Plus } from 'lucide-react';
 
-export default function RestaurantView() {
+export default function RestaurantView({ addToCart }) {
     const { id } = useParams();
     const navigate = useNavigate();
     const [data, setData] = useState(null);
@@ -16,7 +16,7 @@ export default function RestaurantView() {
     const fetchMenu = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`https://nfcrevolution.com/hungr/api/restaurants/${id}/menu`);
+            const res = await fetch(`/hungr/api/restaurants/${id}/menu`);
             const result = await res.json();
             if (result.success) {
                 setData(result.data);
@@ -25,6 +25,19 @@ export default function RestaurantView() {
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleAdd = (item) => {
+        if (addToCart && data) {
+            const cartItem = {
+                ...item,
+                restaurantId: data.restaurant.id,
+                restaurantName: data.restaurant.name
+            };
+            addToCart(cartItem);
+            // Optional: Feedback (toast or alert, keeping it simple for now as requested)
+            // alert("Added to cart"); 
         }
     };
 
@@ -101,7 +114,7 @@ export default function RestaurantView() {
                     <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex gap-3">
                         <div className="w-24 h-24 bg-gray-100 rounded-xl overflow-hidden shrink-0">
                             {/* Placeholder for menu item images if missing */}
-                            <img src={item.image_url || `https://via.placeholder.com/100?text=${item.name[0]}`} className="w-full h-full object-cover" alt={item.name} />
+                            <img src={item.image_url || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"} className="w-full h-full object-cover" alt={item.name} />
                         </div>
                         <div className="flex-1 flex flex-col justify-between">
                             <div>
@@ -110,13 +123,25 @@ export default function RestaurantView() {
                             </div>
                             <div className="flex justify-between items-end mt-2">
                                 <span className="font-bold text-orange-600">₱{item.price}</span>
-                                <button className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-600 hover:text-white transition">
+                                <button
+                                    onClick={() => handleAdd(item)}
+                                    className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-600 hover:text-white transition">
                                     <Plus size={18} />
                                 </button>
                             </div>
                         </div>
                     </div>
                 ))}
+            </div>
+
+            {/* Floating Cart Button */}
+            <div className="fixed bottom-24 right-4 z-40">
+                <button
+                    onClick={() => navigate('/cart')}
+                    className="bg-orange-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition active:scale-95 flex items-center justify-center"
+                >
+                    <ShoppingBag size={24} />
+                </button>
             </div>
 
         </div>

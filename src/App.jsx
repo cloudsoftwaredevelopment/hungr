@@ -52,7 +52,7 @@ function AppContent() {
   const fetchRestaurants = async () => {
     setLoading(true);
     try {
-      const response = await fetch('https://nfcrevolution.com/hungr/api/restaurants');
+      const response = await fetch('/hungr/api/restaurants');
       const data = await response.json();
       if (data.success) {
         setRestaurants(data.data);
@@ -186,7 +186,7 @@ function AppContent() {
             />
           } />
 
-          <Route path="/restaurant/:id" element={<RestaurantView />} />
+          <Route path="/restaurant/:id" element={<RestaurantView addToCart={handleAddToCart} />} />
 
           <Route path="/wallet" element={<ProtectedRoute><div className="p-4"><WalletView /></div></ProtectedRoute>} />
           <Route path="/transactions" element={<ProtectedRoute><div className="p-4"><TransactionsView /></div></ProtectedRoute>} />

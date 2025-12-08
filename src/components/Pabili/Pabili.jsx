@@ -33,11 +33,11 @@ export default function Pabili() {
   const fetchStores = async (query = '', cat = 'All') => {
     setLoading(true);
     try {
-      let url = `https://nfcrevolution.com/hungr/api/pabili/stores?category=${cat}`;
+      let url = `/hungr/api/pabili/stores?category=${cat}`;
 
       if (query.length > 2) {
         const loc = userLocation ? `&lat=${userLocation.lat}&long=${userLocation.long}` : '';
-        url = `https://nfcrevolution.com/hungr/api/pabili/search?q=${query}${loc}`;
+        url = `/hungr/api/pabili/search?q=${query}${loc}`;
       }
 
       const res = await fetch(url);
@@ -140,8 +140,8 @@ export default function Pabili() {
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={`px-5 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${activeCategory === cat
-                  ? 'bg-orange-600 text-white border-orange-600 shadow-lg shadow-orange-200 scale-105'
-                  : 'bg-white text-gray-500 border-gray-100 shadow-sm hover:border-orange-200 hover:text-orange-600'
+                ? 'bg-orange-600 text-white border-orange-600 shadow-lg shadow-orange-200 scale-105'
+                : 'bg-white text-gray-500 border-gray-100 shadow-sm hover:border-orange-200 hover:text-orange-600'
                 }`}
             >
               {cat}
@@ -187,10 +187,10 @@ export default function Pabili() {
                 {/* Store Image (Thumbnail Style) */}
                 <div className="w-24 h-24 bg-gray-100 rounded-xl shrink-0 overflow-hidden relative">
                   <img
-                    src={store.image_url || 'https://via.placeholder.com/150'}
+                    src={store.image_url || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+'}
                     alt={store.name}
                     className="w-full h-full object-cover"
-                    onError={(e) => e.target.src = 'https://via.placeholder.com/150?text=Store'}
+                    onError={(e) => e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+'}
                   />
                   {store.is_featured === 1 && (
                     <div className="absolute top-0 left-0 w-full bg-orange-500/90 text-white text-[8px] font-bold text-center py-0.5 uppercase tracking-wide">
