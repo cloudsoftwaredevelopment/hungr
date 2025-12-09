@@ -245,6 +245,28 @@ const pool = mysql.createPool({
                 UNIQUE KEY unique_watcher (user_id, restaurant_id)
             ) ENGINE=InnoDB;
         `);
+
+        // Add cost column to menu_items if it doesn't exist
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS cost DECIMAL(10,2) DEFAULT 0.00
+            `);
+            console.log("menu_items.cost column checked/added.");
+        } catch (e) {
+            // Column might already exist in some DB versions that don't support IF NOT EXISTS
+            console.log("menu_items.cost column might already exist.");
+        }
+
+        // Add cost_at_time column to order_items if it doesn't exist
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cost_at_time DECIMAL(10,2) DEFAULT 0.00
+            `);
+            console.log("order_items.cost_at_time column checked/added.");
+        } catch (e) {
+            console.log("order_items.cost_at_time column might already exist.");
+        }
+
         console.log("Pabili and Store tables checked/created.");
     } catch (e) {
         console.error("Table Init Error:", e);
@@ -1146,18 +1168,15 @@ apiRouter.get('/merchant/:id/menu', verifyToken, async (req, res) => {
 
 apiRouter.post('/merchant/menu/save', verifyToken, async (req, res) => {
     try {
-        const { id, restaurant_id, name, description, price, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end } = req.body;
+        const { id, restaurant_id, name, description, price, cost, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end } = req.body;
         if (req.user.restaurantId !== restaurant_id) return sendError(res, 403, "Unauthorized");
 
-        const sql = id ? `UPDATE menu_items SET name=?, description=?, price=?, promotional_price=?, category=?, image_url=?, stock_quantity=?, is_available=?, food_type=?, cuisine_type=?, availability_start=?, availability_end=? WHERE id=? AND restaurant_id=?` : `INSERT INTO menu_items (name, description, price, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end, restaurant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        const params = id ? [name, description, price, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, id, restaurant_id] : [name, description, price, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, restaurant_id];
-
-        // Use execute for modify queries usually, but query is fine too if just returning ID.
-        // For insertId/affectedRows, pool.query returns [result, fields]
-        // Our db.query helper returns [result] which is the ROWS for SELECT, or the OkPacket for INSERT/UPDATE using mysql2.
-        // Wait, mysql2 promise query returns [rows, fields]. 
-        // My helper: const [results] = await pool.promise().query(sql, params); return results;
-        // For INSERT, results is the OkPacket. So result.insertId works.
+        const sql = id
+            ? `UPDATE menu_items SET name=?, description=?, price=?, cost=?, promotional_price=?, category=?, image_url=?, stock_quantity=?, is_available=?, food_type=?, cuisine_type=?, availability_start=?, availability_end=? WHERE id=? AND restaurant_id=?`
+            : `INSERT INTO menu_items (name, description, price, cost, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end, restaurant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const params = id
+            ? [name, description, price, cost || 0, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, id, restaurant_id]
+            : [name, description, price, cost || 0, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, restaurant_id];
 
         const result = await db.query(sql, params);
         sendSuccess(res, { id: id || result.insertId }, "Item saved");
@@ -1168,10 +1187,129 @@ apiRouter.post('/merchant/menu/save', verifyToken, async (req, res) => {
 
 apiRouter.delete('/merchant/menu/:itemId', verifyToken, async (req, res) => {
     try {
-        await db.query('DELETE FROM menu_items WHERE id = ? AND restaurant_id = ?', [req.params.itemId, req.user.restaurantId]);
+        const itemId = req.params.itemId;
+        const restaurantId = req.user.restaurantId;
+        console.log(`[Delete Menu] Deleting item ${itemId} for restaurant ${restaurantId}`);
+        await db.query('DELETE FROM menu_items WHERE id = ? AND restaurant_id = ?', [itemId, restaurantId]);
         sendSuccess(res, null, "Item deleted");
     } catch (err) {
-        sendError(res, 500, "Delete failed");
+        console.error('[Delete Menu Error]', err);
+        sendError(res, 500, "Delete failed", "DB_ERROR", err);
+    }
+});
+
+// Sales History & Analytics - Get completed orders with profit calculations
+apiRouter.get('/merchant/sales-history', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        if (role !== 'merchant' || !restaurantId) return sendError(res, 403, 'Access denied');
+
+        // Date filtering
+        const { startDate, endDate } = req.query;
+        let dateFilter = '';
+        const params = [restaurantId];
+
+        if (startDate && endDate) {
+            dateFilter = ' AND DATE(o.created_at) BETWEEN ? AND ?';
+            params.push(startDate, endDate);
+        } else if (startDate) {
+            dateFilter = ' AND DATE(o.created_at) >= ?';
+            params.push(startDate);
+        } else if (endDate) {
+            dateFilter = ' AND DATE(o.created_at) <= ?';
+            params.push(endDate);
+        }
+
+        // Fetch completed/delivered orders for this restaurant
+        const salesQuery = `
+            SELECT 
+                o.id as order_id,
+                o.total_amount,
+                o.status,
+                o.created_at,
+                u.username as customer_name,
+                u.phone_number as customer_phone,
+                r.name as rider_name,
+                r.phone as rider_phone,
+                JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'item_id', oi.id,
+                        'name', m.name,
+                        'quantity', oi.quantity,
+                        'selling_price', oi.price_at_time,
+                        'cost', COALESCE(oi.cost_at_time, m.cost, 0),
+                        'promo_price', m.promotional_price
+                    )
+                ) as items
+            FROM orders o
+            JOIN users u ON o.user_id = u.id
+            LEFT JOIN riders r ON o.rider_id = r.id
+            JOIN order_items oi ON o.id = oi.order_id
+            JOIN menu_items m ON oi.menu_item_id = m.id
+            WHERE o.restaurant_id = ? 
+              AND o.status IN ('delivered', 'ready_for_pickup', 'completed')
+              ${dateFilter}
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+            LIMIT 1000
+        `;
+
+        const salesRows = await db.query(salesQuery, params);
+
+        // Process and compute profit for each order
+        const salesData = salesRows.map(row => {
+            const items = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
+
+            // Calculate gross profit (selling price - cost) for each item
+            let totalRevenue = 0;
+            let totalCost = 0;
+
+            const processedItems = items.map(item => {
+                const itemRevenue = parseFloat(item.selling_price || 0) * (item.quantity || 1);
+                const itemCost = parseFloat(item.cost || 0) * (item.quantity || 1);
+                totalRevenue += itemRevenue;
+                totalCost += itemCost;
+
+                return {
+                    ...item,
+                    gross_profit: (itemRevenue - itemCost).toFixed(2)
+                };
+            });
+
+            const grossProfit = totalRevenue - totalCost;
+            // Net profit could include delivery fees, platform fees, etc. For now, same as gross
+            const netProfit = grossProfit;
+
+            return {
+                order_id: row.order_id,
+                order_number: `H-${row.order_id}`,
+                timestamp: row.created_at,
+                status: row.status,
+                customer_name: row.customer_name,
+                rider_name: row.rider_name || 'Not assigned',
+                rider_phone: row.rider_phone || null,
+                items: processedItems,
+                total_revenue: totalRevenue.toFixed(2),
+                total_cost: totalCost.toFixed(2),
+                gross_profit: grossProfit.toFixed(2),
+                net_profit: netProfit.toFixed(2),
+                promo_applied: null // TODO: Add promo tracking when discount is applied to order
+            };
+        });
+
+        // Calculate summary stats
+        const summary = {
+            total_orders: salesData.length,
+            total_revenue: salesData.reduce((sum, s) => sum + parseFloat(s.total_revenue), 0).toFixed(2),
+            total_cost: salesData.reduce((sum, s) => sum + parseFloat(s.total_cost), 0).toFixed(2),
+            total_gross_profit: salesData.reduce((sum, s) => sum + parseFloat(s.gross_profit), 0).toFixed(2),
+            total_net_profit: salesData.reduce((sum, s) => sum + parseFloat(s.net_profit), 0).toFixed(2)
+        };
+
+        sendSuccess(res, { sales: salesData, summary }, 'Sales history retrieved');
+    } catch (err) {
+        console.error('Sales history error:', err);
+        sendError(res, 500, 'Failed to fetch sales history', 'DB_ERROR', err);
     }
 });
 

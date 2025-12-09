@@ -162,8 +162,14 @@ export default function RestaurantView({ addToCart }) {
             {/* MENU LIST */}
             <div className="p-4 space-y-4">
                 {filteredMenu.map(item => (
-                    <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex gap-3">
-                        <div className="w-24 h-24 bg-gray-100 rounded-xl overflow-hidden shrink-0">
+                    <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex gap-3 relative">
+                        <div className="w-24 h-24 bg-gray-100 rounded-xl overflow-hidden shrink-0 relative">
+                            {/* PROMO badge */}
+                            {item.promotional_price && parseFloat(item.promotional_price) > 0 && (
+                                <div className="absolute top-1 left-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm z-10">
+                                    PROMO
+                                </div>
+                            )}
                             {/* Placeholder for menu item images if missing */}
                             <img src={item.image_url || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"} className="w-full h-full object-cover" alt={item.name} />
                         </div>
@@ -173,7 +179,16 @@ export default function RestaurantView({ addToCart }) {
                                 <p className="text-xs text-gray-500 line-clamp-2 mt-1">{item.description}</p>
                             </div>
                             <div className="flex justify-between items-end mt-2">
-                                <span className="font-bold text-orange-600">₱{item.price}</span>
+                                <div className="flex items-baseline gap-2">
+                                    {item.promotional_price && parseFloat(item.promotional_price) > 0 ? (
+                                        <>
+                                            <span className="font-bold text-orange-600">₱{parseFloat(item.promotional_price).toFixed(2)}</span>
+                                            <span className="text-xs text-gray-400 line-through">₱{parseFloat(item.price).toFixed(2)}</span>
+                                        </>
+                                    ) : (
+                                        <span className="font-bold text-orange-600">₱{parseFloat(item.price).toFixed(2)}</span>
+                                    )}
+                                </div>
                                 <button
                                     onClick={() => !isClosed && handleAdd(item)}
                                     disabled={isClosed}
