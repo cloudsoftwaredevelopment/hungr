@@ -886,7 +886,7 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
 
         // Fetch regular restaurant orders with accepted_at from prepared_orders
         const restQuery = `
-            SELECT o.id, o.total_amount, o.status, o.created_at, 
+            SELECT o.id, o.total_amount, o.status, o.created_at, o.dispatch_code,
             u.username as customer_name, 
             u.address as delivery_address, 
             JSON_ARRAYAGG(
@@ -1010,6 +1010,70 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
             }
         }
 
+        // If status is 'ready_for_pickup', auto-generate dispatch code if not already set
+        if (status === 'ready_for_pickup' && type !== 'store') {
+            // Check if order already has dispatch code
+            const [orderCheck] = await db.execute('SELECT dispatch_code, total_amount FROM orders WHERE id = ?', [orderId]);
+
+            if (orderCheck.length > 0 && !orderCheck[0].dispatch_code) {
+                // Generate 6-digit dispatch code
+                const dispatchCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+                // Save dispatch code to order
+                await db.execute('UPDATE orders SET dispatch_code = ? WHERE id = ?', [dispatchCode, orderId]);
+
+                // Get restaurant info for notification
+                const [restaurantRows] = await db.execute('SELECT latitude, longitude, name, address FROM restaurants WHERE id = ?', [restaurantId]);
+
+                if (restaurantRows.length > 0 && restaurantRows[0].latitude && restaurantRows[0].longitude) {
+                    const restLat = parseFloat(restaurantRows[0].latitude);
+                    const restLon = parseFloat(restaurantRows[0].longitude);
+                    const restName = restaurantRows[0].name;
+                    const restAddress = restaurantRows[0].address || '';
+                    const totalAmount = orderCheck[0].total_amount;
+
+                    // Find online riders
+                    const [onlineRiders] = await db.execute('SELECT id, user_id, name, current_latitude, current_longitude FROM riders WHERE is_online = 1 AND current_latitude IS NOT NULL');
+
+                    // Calculate distance and sort using Haversine
+                    const ridersWithDistance = onlineRiders.map(r => ({
+                        ...r,
+                        distance: haversineDistance(restLat, restLon, parseFloat(r.current_latitude), parseFloat(r.current_longitude))
+                    })).sort((a, b) => a.distance - b.distance);
+
+                    // Get 10 closest riders
+                    const closestRiders = ridersWithDistance.slice(0, 10);
+
+                    // Emit notification to each rider via Socket.IO with dispatch code
+                    closestRiders.forEach(rider => {
+                        io.emit(`rider_${rider.id}_new_order`, {
+                            orderId,
+                            orderType: type || 'food',
+                            restaurantId,
+                            restaurantName: restName,
+                            restaurantAddress: restAddress,
+                            totalAmount: parseFloat(totalAmount).toFixed(2),
+                            dispatchCode,
+                            message: `Pickup at ${restName} - ₱${parseFloat(totalAmount).toFixed(2)}`,
+                            distance: rider.distance.toFixed(2)
+                        });
+                    });
+
+                    // Also emit to general rider feed
+                    io.emit('new_pickup', {
+                        orderId,
+                        restaurantName: restName,
+                        restaurantAddress: restAddress,
+                        totalAmount: parseFloat(totalAmount).toFixed(2),
+                        dispatchCode,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    console.log(`[Order #${orderId}] Marked Ready. Auto-generated Dispatch Code: ${dispatchCode}. Notified ${closestRiders.length} riders.`);
+                }
+            }
+        }
+
         sendSuccess(res, { id: orderId, status }, 'Status updated');
     } catch (err) {
         console.error("Order status update error:", err);
@@ -1017,7 +1081,7 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
     }
 });
 
-// Notify closest riders without changing order status
+// Notify closest riders without changing order status - generates dispatch code
 apiRouter.post('/merchant/orders/:id/notify-riders', verifyToken, async (req, res) => {
     try {
         const { restaurantId, role } = req.user;
@@ -1026,22 +1090,39 @@ apiRouter.post('/merchant/orders/:id/notify-riders', verifyToken, async (req, re
 
         if (role !== 'merchant') return sendError(res, 403, 'Access denied');
 
-        // Get restaurant location
-        const [restaurantRows] = await db.execute('SELECT latitude, longitude, name FROM restaurants WHERE id = ?', [restaurantId]);
+        // Get order details and check if dispatch code already exists
+        const [orderRows] = await db.execute('SELECT total_amount, dispatch_code FROM orders WHERE id = ? AND restaurant_id = ?', [orderId, restaurantId]);
+        if (orderRows.length === 0) return sendError(res, 404, 'Order not found');
+
+        // If dispatch code already exists, return error - it's a one-time operation
+        if (orderRows[0].dispatch_code) {
+            return sendError(res, 400, 'Dispatch code already generated for this order');
+        }
+
+        // Generate 6-digit dispatch code (only if not already set)
+        const dispatchCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        const [restaurantRows] = await db.execute('SELECT latitude, longitude, name, address FROM restaurants WHERE id = ?', [restaurantId]);
 
         if (restaurantRows.length === 0 || !restaurantRows[0].latitude || !restaurantRows[0].longitude) {
             return sendError(res, 400, 'Restaurant location not set');
         }
 
+        // Save dispatch code to order (permanent, one-time)
+        await db.execute('UPDATE orders SET dispatch_code = ? WHERE id = ?', [dispatchCode, orderId]);
+
         const restLat = parseFloat(restaurantRows[0].latitude);
         const restLon = parseFloat(restaurantRows[0].longitude);
         const restName = restaurantRows[0].name;
+        const restAddress = restaurantRows[0].address || '';
+        const totalAmount = orderRows[0].total_amount;
 
         // Find online riders with location data
         const [onlineRiders] = await db.execute('SELECT id, user_id, name, current_latitude, current_longitude FROM riders WHERE is_online = 1 AND current_latitude IS NOT NULL');
 
         if (onlineRiders.length === 0) {
-            return sendError(res, 404, 'No online riders available');
+            // Still save dispatch code even if no riders
+            return sendSuccess(res, { dispatchCode, notifiedCount: 0 }, 'Dispatch code generated but no online riders available');
         }
 
         // Calculate distance and sort using Haversine
@@ -1053,24 +1134,129 @@ apiRouter.post('/merchant/orders/:id/notify-riders', verifyToken, async (req, re
         // Get 10 closest riders
         const closestRiders = ridersWithDistance.slice(0, 10);
 
-        // Emit notification to each rider via Socket.IO
+        // Emit notification to each rider via Socket.IO with dispatch code
         closestRiders.forEach(rider => {
             io.emit(`rider_${rider.id}_new_order`, {
                 orderId,
                 orderType: type || 'food',
                 restaurantId,
                 restaurantName: restName,
-                message: `Order #${orderId} ready for pickup at ${restName}!`,
+                restaurantAddress: restAddress,
+                totalAmount: parseFloat(totalAmount).toFixed(2),
+                dispatchCode,
+                message: `Pickup at ${restName} - ₱${parseFloat(totalAmount).toFixed(2)}`,
                 distance: rider.distance.toFixed(2)
             });
         });
 
-        console.log(`[Order #${orderId}] Notified ${closestRiders.length} closest riders.`);
-        sendSuccess(res, { notifiedCount: closestRiders.length, riders: closestRiders.map(r => ({ id: r.id, name: r.name, distance: r.distance.toFixed(2) })) }, 'Riders notified');
+        // Also emit to general rider feed
+        io.emit('new_pickup', {
+            orderId,
+            restaurantName: restName,
+            restaurantAddress: restAddress,
+            totalAmount: parseFloat(totalAmount).toFixed(2),
+            dispatchCode,
+            timestamp: new Date().toISOString()
+        });
+
+        console.log(`[Order #${orderId}] Dispatch Code: ${dispatchCode}. Notified ${closestRiders.length} closest riders.`);
+        sendSuccess(res, {
+            dispatchCode,
+            notifiedCount: closestRiders.length,
+            riders: closestRiders.map(r => ({ id: r.id, name: r.name, distance: r.distance.toFixed(2) }))
+        }, 'Riders notified');
 
     } catch (err) {
         console.error("Notify riders error:", err);
         sendError(res, 500, 'Failed to notify riders');
+    }
+});
+
+// Find orders by dispatch code for handoff
+apiRouter.get('/merchant/orders/by-dispatch-code', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        const { code } = req.query;
+
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+        if (!code || code.length !== 6) return sendError(res, 400, 'Invalid dispatch code');
+
+        const [orders] = await db.execute(`
+            SELECT o.id, o.total_amount, o.status, o.dispatch_code, o.created_at,
+                   u.username as customer_name, u.phone_number as customer_phone
+            FROM orders o
+            LEFT JOIN users u ON o.user_id = u.id
+            WHERE o.restaurant_id = ? 
+              AND o.dispatch_code = ?
+              AND o.status IN ('preparing', 'ready_for_pickup')
+        `, [restaurantId, code]);
+
+        if (orders.length === 0) {
+            return sendError(res, 404, 'No orders found with this dispatch code');
+        }
+
+        // Get items for each order
+        for (let i = 0; i < orders.length; i++) {
+            const [items] = await db.execute(`
+                SELECT oi.quantity, m.name, oi.price_at_time
+                FROM order_items oi
+                JOIN menu_items m ON oi.menu_item_id = m.id
+                WHERE oi.order_id = ?
+            `, [orders[i].id]);
+            orders[i].items = items;
+        }
+
+        const totalAmount = orders.reduce((sum, o) => sum + parseFloat(o.total_amount), 0);
+
+        sendSuccess(res, { orders, totalAmount: totalAmount.toFixed(2) }, 'Orders found');
+    } catch (err) {
+        console.error("Find by dispatch code error:", err);
+        sendError(res, 500, 'Failed to find orders');
+    }
+});
+
+// Release order to rider (mark as picked up)
+apiRouter.post('/merchant/orders/:id/release', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        const orderId = req.params.id;
+        const { riderId } = req.body;
+
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+
+        // Verify order belongs to restaurant and has dispatch code
+        const [orderRows] = await db.execute(`
+            SELECT o.id, o.user_id, o.dispatch_code, o.total_amount
+            FROM orders o
+            WHERE o.id = ? AND o.restaurant_id = ?
+        `, [orderId, restaurantId]);
+
+        if (orderRows.length === 0) return sendError(res, 404, 'Order not found');
+
+        // Update order status to delivering
+        await db.execute(`
+            UPDATE orders 
+            SET status = 'delivering', rider_id = ?, updated_at = NOW()
+            WHERE id = ?
+        `, [riderId || null, orderId]);
+
+        // Clear dispatch code after release
+        await db.execute('UPDATE orders SET dispatch_code = NULL WHERE id = ?', [orderId]);
+
+        // Notify customer via Socket.IO
+        const userId = orderRows[0].user_id;
+        io.emit(`user_${userId}_order_update`, {
+            orderId,
+            status: 'delivering',
+            message: 'Rider has picked up your order!'
+        });
+
+        console.log(`[Order #${orderId}] Released to rider. Customer notified.`);
+        sendSuccess(res, { id: orderId, status: 'delivering' }, 'Order released to rider');
+
+    } catch (err) {
+        console.error("Release order error:", err);
+        sendError(res, 500, 'Failed to release order');
     }
 });
 
@@ -1092,6 +1278,7 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
         if (orderCheck.length === 0) return sendError(res, 404, 'Order not found');
 
         // 2. Process Declined Items
+
         if (declinedItems && declinedItems.length > 0) {
             for (const item of declinedItems) {
                 // item: { id, name, price, quantity, reason }
