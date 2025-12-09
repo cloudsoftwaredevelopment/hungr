@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { Search, ShoppingBag, Store, User, Bike, AlertCircle, Database, ChevronLeft } from 'lucide-react';
+import { io } from 'socket.io-client';
 
 // --- IMPORTS ---
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider, useToast } from './components/UI/Toast';
 import Login from './components/Auth/Login';
 import HomeView from './components/Home/HomeView';
 import Pabili from './components/Pabili/Pabili';
@@ -22,6 +24,12 @@ import TransactionsView from './components/Transactions/TransactionsView';
 import CoinsView from './components/Coin/CoinsView';
 import CoinDisplay from './components/Coin/CoinDisplay';
 
+// Socket.IO connection
+const socket = io(window.location.origin, {
+  path: '/hungr/socket.io',
+  autoConnect: false
+});
+
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
@@ -36,6 +44,7 @@ const ProtectedRoute = ({ children }) => {
 
 function AppContent() {
   const { isAuthenticated, user } = useAuth();
+  const { showToast } = useToast();
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,6 +57,25 @@ function AppContent() {
   useEffect(() => {
     fetchRestaurants();
   }, []);
+
+  // Socket.IO connection for notifications
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      socket.connect();
+
+      // Listen for restaurant open notifications
+      const eventName = `user_${user.id}_restaurant_open`;
+      socket.on(eventName, (data) => {
+        console.log('[Socket] Restaurant opened:', data);
+        showToast(data.message, 'success', 8000);
+      });
+
+      return () => {
+        socket.off(eventName);
+        socket.disconnect();
+      };
+    }
+  }, [isAuthenticated, user?.id, showToast]);
 
   const fetchRestaurants = async () => {
     setLoading(true);
@@ -227,7 +255,10 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }
+

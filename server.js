@@ -16,6 +16,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import multer from 'multer';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -41,6 +43,19 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_' + Date.now();
 const JWT_EXPIRY = '24h';
 
+// Haversine formula to calculate distance between two lat/lng points (in km)
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:5173', 'https://nfcrevolution.com'],
     credentials: true
@@ -63,6 +78,42 @@ app.use('/hungrmerchant', express.static(path.join(__dirname, '../hungr-merchant
 
 // Also mount to root as a backup (for customer app usually)
 app.use(express.static(path.join(__dirname, 'dist')));
+
+// --- UPLOADS DIRECTORY SETUP ---
+const uploadsDir = path.join(__dirname, 'uploads', 'menu');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Serve uploaded images
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/hungr/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Multer storage configuration
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, 'menu-' + uniqueSuffix + ext);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|gif|webp/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (extname && mimetype) {
+            return cb(null, true);
+        }
+        cb(new Error('Only image files are allowed'));
+    }
+});
 
 // --- DATABASE CONNECTION ---
 const pool = mysql.createPool({
@@ -129,6 +180,16 @@ const pool = mysql.createPool({
             ) ENGINE=InnoDB;
         `);
         await poolPromise.execute(`
+            CREATE TABLE IF NOT EXISTS prepared_orders (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                order_id INT NOT NULL,
+                order_type ENUM('food', 'store') DEFAULT 'food',
+                restaurant_id INT,
+                accepted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ready_at TIMESTAMP NULL
+            ) ENGINE=InnoDB;
+        `);
+        await poolPromise.execute(`
             CREATE TABLE IF NOT EXISTS store_paid_orders (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT NOT NULL,
@@ -172,6 +233,16 @@ const pool = mysql.createPool({
                 rider_id INT DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB;
+        `);
+
+        await poolPromise.execute(`
+            CREATE TABLE IF NOT EXISTS restaurant_watchers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                restaurant_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_watcher (user_id, restaurant_id)
             ) ENGINE=InnoDB;
         `);
         console.log("Pabili and Store tables checked/created.");
@@ -694,8 +765,25 @@ apiRouter.post('/merchant/login', async (req, res) => {
         const valid = await bcrypt.compare(password, merchant.password_hash);
         if (!valid) return sendError(res, 401, 'Invalid credentials');
 
+        // Fetch the restaurant's current is_available status
+        let isOnline = false;
+        if (merchant.restaurant_id) {
+            const [restRows] = await db.execute('SELECT is_available FROM restaurants WHERE id = ?', [merchant.restaurant_id]);
+            if (restRows.length > 0) {
+                isOnline = restRows[0].is_available === 1;
+            }
+        }
+
         const token = generateToken({ id: merchant.id, role: 'merchant', restaurantId: merchant.restaurant_id });
-        sendSuccess(res, { id: merchant.id, name: merchant.name, email: merchant.email, phone_number: merchant.phone_number, restaurant_id: merchant.restaurant_id, accessToken: token });
+        sendSuccess(res, {
+            id: merchant.id,
+            name: merchant.name,
+            email: merchant.email,
+            phone_number: merchant.phone_number,
+            restaurant_id: merchant.restaurant_id,
+            is_online: isOnline,  // Include current online status from restaurants table
+            accessToken: token
+        });
     } catch (err) {
         sendError(res, 500, "Login failed", "AUTH_ERROR", err);
     }
@@ -704,8 +792,37 @@ apiRouter.post('/merchant/login', async (req, res) => {
 apiRouter.post('/merchant/status', verifyToken, async (req, res) => {
     try {
         const { isOnline } = req.body;
+        const restaurantId = req.user.restaurantId;
+
         // Updating 'is_available' in restaurants table as a proxy for "Online/Offline"
-        await db.execute('UPDATE restaurants SET is_available = ? WHERE id = ?', [isOnline ? 1 : 0, req.user.restaurantId]);
+        await db.execute('UPDATE restaurants SET is_available = ? WHERE id = ?', [isOnline ? 1 : 0, restaurantId]);
+
+        // If going ONLINE, notify all watchers and clear the list
+        if (isOnline) {
+            // Get restaurant name for notification
+            const [restRows] = await db.execute('SELECT name FROM restaurants WHERE id = ?', [restaurantId]);
+            const restaurantName = restRows.length > 0 ? restRows[0].name : 'Restaurant';
+
+            // Fetch all watchers for this restaurant
+            const [watchers] = await db.execute('SELECT user_id FROM restaurant_watchers WHERE restaurant_id = ?', [restaurantId]);
+
+            if (watchers.length > 0) {
+                console.log(`[Restaurant #${restaurantId}] Going online. Notifying ${watchers.length} watchers.`);
+
+                // Emit notification to each watcher via Socket.IO
+                watchers.forEach(watcher => {
+                    io.emit(`user_${watcher.user_id}_restaurant_open`, {
+                        restaurantId,
+                        restaurantName,
+                        message: `🎉 ${restaurantName} is now open!`
+                    });
+                });
+
+                // Clear all watchers for this restaurant
+                await db.execute('DELETE FROM restaurant_watchers WHERE restaurant_id = ?', [restaurantId]);
+            }
+        }
+
         sendSuccess(res, { isOnline }, "Status updated");
     } catch (err) {
         console.error("Status Update Failed", err);
@@ -718,11 +835,6 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
         const { restaurantId, role } = req.user;
         if ((role !== 'merchant' && role !== 'store_admin') || !restaurantId) return sendError(res, 403, 'Access denied');
 
-        // Check if this "restaurantId" is actually a "Store" (Quick hack: Check stores table or handling store_paid_orders first)
-        // For MVP, we'll try to fetch from store_paid_orders. If empty, fall back to orders (or union).
-        // A better design would use a 'merchant_type' field.
-        // Let's simpler: If we find store orders, return them.
-
         let orders = [];
 
         try {
@@ -734,10 +846,12 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
                     JSON_OBJECT('name', i.product_name, 'quantity', i.quantity, 'price', i.price)
                 ) as items,
                 o.rider_id,
+                p.accepted_at,
                 'store' as type
                 FROM store_paid_orders o
                 JOIN users u ON o.user_id = u.id
                 JOIN store_order_items i ON o.id = i.order_id
+                LEFT JOIN prepared_orders p ON o.id = p.order_id AND p.order_type = 'store'
                 WHERE o.store_id = ?
                 GROUP BY o.id
                 ORDER BY o.created_at DESC
@@ -748,28 +862,25 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
             }
         } catch (ignore) { }
 
-        // Fetch regular restaurant orders
-        // Fetch regular restaurant orders
+        // Fetch regular restaurant orders with accepted_at from prepared_orders
         const restQuery = `
             SELECT o.id, o.total_amount, o.status, o.created_at, 
             u.username as customer_name, 
             u.address as delivery_address, 
             JSON_ARRAYAGG(
                 JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time)
-            ) as items 
+            ) as items,
+            p.accepted_at
             FROM orders o 
             JOIN users u ON o.user_id = u.id 
             JOIN order_items oi ON o.id = oi.order_id 
             JOIN menu_items m ON oi.menu_item_id = m.id 
+            LEFT JOIN prepared_orders p ON o.id = p.order_id AND p.order_type = 'food'
             WHERE o.restaurant_id = ? 
             GROUP BY o.id 
             ORDER BY o.created_at DESC
         `;
 
-        // Check if db.query returns [rows] or just rows. 
-        // Based on "restRows.map is not a function" error, I suspect db.query returns the rows array directly,
-        // so destructuring [restRows] assigns the *first row* to restRows, which is an object, not an array.
-        // Let's assume db.query returns the rows directly (custom helper).
         const restRows = await db.query(restQuery, [restaurantId]);
 
         const restOrders = Array.isArray(restRows) ? restRows.map(row => ({
@@ -820,7 +931,7 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
     try {
         const { restaurantId, role } = req.user;
         const orderId = req.params.id;
-        const { status, type, reason } = req.body; // Added reason
+        const { status, type, reason } = req.body;
 
         if (role !== 'merchant') return sendError(res, 403, 'Access denied');
 
@@ -832,15 +943,112 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
 
         if (result.affectedRows === 0) return sendError(res, 404, 'Order not found');
 
-        // If status is 'cancelled' (which we use for decline here), insert into declined_orders
+        // If status is 'cancelled' (decline), insert into declined_orders
         if (status === 'cancelled') {
-            // OLD WAY: Entire order declined
-            await db.execute('INSERT INTO declined_orders (order_id, order_type, reason, item_name) VALUES (?, ?, ?, ?)', [orderId, type || 'food', reason || 'Order Declined', 'ALL ITEMS']);
+            await db.execute('INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, ?, ?)', [orderId, type || 'food', reason || 'Order Declined']);
+        }
+
+        // If status is 'preparing' (accept), insert into prepared_orders and notify riders
+        if (status === 'preparing') {
+            await db.execute('INSERT INTO prepared_orders (order_id, order_type, restaurant_id) VALUES (?, ?, ?)', [orderId, type || 'food', restaurantId]);
+
+            // Get restaurant location
+            const [restaurantRows] = await db.execute('SELECT latitude, longitude, name FROM restaurants WHERE id = ?', [restaurantId]);
+
+            if (restaurantRows.length > 0 && restaurantRows[0].latitude && restaurantRows[0].longitude) {
+                const restLat = parseFloat(restaurantRows[0].latitude);
+                const restLon = parseFloat(restaurantRows[0].longitude);
+                const restName = restaurantRows[0].name;
+
+                // Find online riders with location data
+                const [onlineRiders] = await db.execute('SELECT id, user_id, name, current_latitude, current_longitude FROM riders WHERE is_online = 1 AND current_latitude IS NOT NULL');
+
+                // Calculate distance and sort
+                const ridersWithDistance = onlineRiders.map(r => ({
+                    ...r,
+                    distance: haversineDistance(restLat, restLon, parseFloat(r.current_latitude), parseFloat(r.current_longitude))
+                })).sort((a, b) => a.distance - b.distance);
+
+                // Get 10 closest riders
+                const closestRiders = ridersWithDistance.slice(0, 10);
+
+                // Emit notification to each rider via Socket.IO
+                closestRiders.forEach(rider => {
+                    io.emit(`rider_${rider.id}_new_order`, {
+                        orderId,
+                        orderType: type || 'food',
+                        restaurantId,
+                        restaurantName: restName,
+                        message: `New order ready for pickup at ${restName}!`,
+                        distance: rider.distance.toFixed(2)
+                    });
+                });
+
+                console.log(`[Order #${orderId}] Accepted. Notified ${closestRiders.length} closest riders.`);
+            }
         }
 
         sendSuccess(res, { id: orderId, status }, 'Status updated');
     } catch (err) {
+        console.error("Order status update error:", err);
         sendError(res, 500, 'Update failed');
+    }
+});
+
+// Notify closest riders without changing order status
+apiRouter.post('/merchant/orders/:id/notify-riders', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        const orderId = req.params.id;
+        const { type } = req.body;
+
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+
+        // Get restaurant location
+        const [restaurantRows] = await db.execute('SELECT latitude, longitude, name FROM restaurants WHERE id = ?', [restaurantId]);
+
+        if (restaurantRows.length === 0 || !restaurantRows[0].latitude || !restaurantRows[0].longitude) {
+            return sendError(res, 400, 'Restaurant location not set');
+        }
+
+        const restLat = parseFloat(restaurantRows[0].latitude);
+        const restLon = parseFloat(restaurantRows[0].longitude);
+        const restName = restaurantRows[0].name;
+
+        // Find online riders with location data
+        const [onlineRiders] = await db.execute('SELECT id, user_id, name, current_latitude, current_longitude FROM riders WHERE is_online = 1 AND current_latitude IS NOT NULL');
+
+        if (onlineRiders.length === 0) {
+            return sendError(res, 404, 'No online riders available');
+        }
+
+        // Calculate distance and sort using Haversine
+        const ridersWithDistance = onlineRiders.map(r => ({
+            ...r,
+            distance: haversineDistance(restLat, restLon, parseFloat(r.current_latitude), parseFloat(r.current_longitude))
+        })).sort((a, b) => a.distance - b.distance);
+
+        // Get 10 closest riders
+        const closestRiders = ridersWithDistance.slice(0, 10);
+
+        // Emit notification to each rider via Socket.IO
+        closestRiders.forEach(rider => {
+            io.emit(`rider_${rider.id}_new_order`, {
+                orderId,
+                orderType: type || 'food',
+                restaurantId,
+                restaurantName: restName,
+                message: `Order #${orderId} ready for pickup at ${restName}!`,
+                distance: rider.distance.toFixed(2)
+            });
+        });
+
+        console.log(`[Order #${orderId}] Notified ${closestRiders.length} closest riders.`);
+        sendSuccess(res, { notifiedCount: closestRiders.length, riders: closestRiders.map(r => ({ id: r.id, name: r.name, distance: r.distance.toFixed(2) })) }, 'Riders notified');
+
+    } catch (err) {
+        console.error("Notify riders error:", err);
+        sendError(res, 500, 'Failed to notify riders');
     }
 });
 
@@ -879,20 +1087,10 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
         }
 
         // 3. Recalculate Total
-        // We need to sum up remaining items
-        const [remainRows] = await db.query(`SELECT price, quantity FROM ${itemTable} WHERE order_id = ?`, [orderId]);
-        // Note: For food orders, 'price' is not in order_items directly in current schema? 
-        // Let's check schema:
-        // Food: order_items (order_id, menu_item_id, quantity, price_at_time) -> 'price_at_time' is the price.
-        // Store: store_order_items (order_id, product_id, product_name, quantity, price) -> 'price' is price.
-
+        // Column name differs: food orders use 'price_at_time', store orders use 'price'
         const priceCol = type === 'store' ? 'price' : 'price_at_time';
 
-        // However, using query instead of execute might return array of rows differently.
-        // Let's use the 'db.query' helper I made which does [results] = ...
-
         let newTotal = 0;
-        // Need to fetch properly because 'price' column name differs
         const [remainingItems] = await db.execute(`SELECT quantity, ${priceCol} as price FROM ${itemTable} WHERE order_id = ?`, [orderId]);
 
         remainingItems.forEach(i => {
@@ -901,7 +1099,8 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
 
         // 4. Update Order
         // If no items remain, status should be 'cancelled' (or all declined)
-        let newStatus = 'accepted';
+        // Valid statuses: 'pending','preparing','delivering','delivered','cancelled'
+        let newStatus = 'preparing';
         if (remainingItems.length === 0) {
             newStatus = 'cancelled';
         }
@@ -973,6 +1172,24 @@ apiRouter.delete('/merchant/menu/:itemId', verifyToken, async (req, res) => {
         sendSuccess(res, null, "Item deleted");
     } catch (err) {
         sendError(res, 500, "Delete failed");
+    }
+});
+
+// Image upload endpoint for menu items
+apiRouter.post('/merchant/upload-image', verifyToken, upload.single('image'), (req, res) => {
+    try {
+        if (!req.file) {
+            return sendError(res, 400, 'No image file uploaded');
+        }
+
+        // Construct the public URL for the uploaded image
+        const imageUrl = `/hungr/uploads/menu/${req.file.filename}`;
+
+        console.log(`[Upload] Image uploaded: ${req.file.filename} for restaurant ${req.user.restaurantId}`);
+        sendSuccess(res, { imageUrl }, 'Image uploaded successfully');
+    } catch (err) {
+        console.error('Upload error:', err);
+        sendError(res, 500, 'Upload failed');
     }
 });
 
@@ -1144,6 +1361,33 @@ apiRouter.get('/restaurants/:id/menu', async (req, res) => {
     }
 });
 
+// Watch a closed restaurant - customer registers interest to be notified when it opens
+apiRouter.post('/restaurants/:id/watch', verifyToken, async (req, res) => {
+    try {
+        const restaurantId = req.params.id;
+        const userId = req.user.id;
+
+        // Check if restaurant is actually closed
+        const [restRows] = await db.execute('SELECT is_available, name FROM restaurants WHERE id = ?', [restaurantId]);
+        if (restRows.length === 0) return sendError(res, 404, 'Restaurant not found');
+
+        if (restRows[0].is_available === 1) {
+            return sendSuccess(res, { watching: false }, 'Restaurant is already open');
+        }
+
+        // Add watcher (INSERT IGNORE handles duplicates)
+        await db.execute(
+            'INSERT IGNORE INTO restaurant_watchers (user_id, restaurant_id) VALUES (?, ?)',
+            [userId, restaurantId]
+        );
+
+        console.log(`[Watch] User #${userId} is now watching Restaurant #${restaurantId} (${restRows[0].name})`);
+        sendSuccess(res, { watching: true, restaurantName: restRows[0].name }, 'You will be notified when this restaurant opens');
+    } catch (err) {
+        console.error("Watch Error:", err);
+        sendError(res, 500, 'Failed to watch restaurant');
+    }
+});
 apiRouter.get('/restaurants', async (req, res) => {
     try {
         const results = await db.query('SELECT * FROM restaurants ORDER BY rating DESC');

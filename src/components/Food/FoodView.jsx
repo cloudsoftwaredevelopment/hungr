@@ -80,34 +80,46 @@ export default function FoodView({ restaurants = [], setActiveRestaurant }) {
 
                 {filteredRestaurants.length > 0 ? (
                     <div className="grid grid-cols-2 gap-4 pb-20">
-                        {filteredRestaurants.map((restaurant) => (
-                            <div
-                                key={restaurant.id}
-                                onClick={() => navigate(`/restaurant/${restaurant.id}`)}
-                                className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 group cursor-pointer active:scale-[0.98] transition-all"
-                            >
-                                {/* Image */}
-                                <div className="h-32 bg-gray-200 relative overflow-hidden">
-                                    <img
-                                        src={restaurant.image_url}
-                                        alt={restaurant.name}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                        onError={(e) => e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+'}
-                                    />
-                                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm flex items-center gap-0.5">
-                                        <Star size={10} className="text-orange-500 fill-orange-500" /> {restaurant.rating}
+                        {filteredRestaurants.map((restaurant) => {
+                            const isClosed = restaurant.is_available === 0 || restaurant.is_available === false;
+                            return (
+                                <div
+                                    key={restaurant.id}
+                                    onClick={() => navigate(`/restaurant/${restaurant.id}`)}
+                                    className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 group cursor-pointer active:scale-[0.98] transition-all ${isClosed ? 'opacity-60' : ''}`}
+                                >
+                                    {/* Image */}
+                                    <div className="h-32 bg-gray-200 relative overflow-hidden">
+                                        <img
+                                            src={restaurant.image_url}
+                                            alt={restaurant.name}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                            onError={(e) => e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+'}
+                                        />
+                                        {/* Rating Badge */}
+                                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm flex items-center gap-0.5">
+                                            <Star size={10} className="text-orange-500 fill-orange-500" /> {restaurant.rating}
+                                        </div>
+                                        {/* CLOSED Badge */}
+                                        {isClosed && (
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                <span className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                                                    CLOSED
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="p-3">
+                                        <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-1">{restaurant.name}</h3>
+                                        <p className="text-gray-500 text-[10px] mt-0.5 line-clamp-1">
+                                            {restaurant.cuisine_type} • {restaurant.delivery_time_min}m
+                                        </p>
                                     </div>
                                 </div>
-
-                                {/* Content */}
-                                <div className="p-3">
-                                    <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-1">{restaurant.name}</h3>
-                                    <p className="text-gray-500 text-[10px] mt-0.5 line-clamp-1">
-                                        {restaurant.cuisine_type} • {restaurant.delivery_time_min}m
-                                    </p>
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 ) : (
                     <div className="text-center py-10 text-gray-400 text-sm">

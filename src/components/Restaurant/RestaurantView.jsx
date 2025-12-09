@@ -13,6 +13,31 @@ export default function RestaurantView({ addToCart }) {
         fetchMenu();
     }, [id]);
 
+    // Register as watcher if restaurant is closed
+    useEffect(() => {
+        const registerWatch = async () => {
+            if (!data) return;
+            const isClosed = data.restaurant.is_available === 0 || data.restaurant.is_available === false;
+            const token = sessionStorage.getItem('token');
+
+            if (isClosed && token) {
+                try {
+                    await fetch(`/hungr/api/restaurants/${id}/watch`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    console.log('[Watch] Registered interest in closed restaurant:', data.restaurant.name);
+                } catch (err) {
+                    console.error('Failed to register watch:', err);
+                }
+            }
+        };
+        registerWatch();
+    }, [data, id]);
+
     const fetchMenu = async () => {
         try {
             setLoading(true);
@@ -45,6 +70,7 @@ export default function RestaurantView({ addToCart }) {
     if (!data) return <div className="p-10 text-center text-gray-500">Restaurant not found</div>;
 
     const { restaurant, menu } = data;
+    const isClosed = restaurant.is_available === 0 || restaurant.is_available === false;
     const categories = ['All', ...new Set(menu.map(item => item.category))];
 
     const filteredMenu = activeCategory === 'All'
@@ -61,6 +87,14 @@ export default function RestaurantView({ addToCart }) {
                 <button onClick={() => navigate(-1)} className="absolute top-4 left-4 p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition">
                     <ChevronLeft size={24} />
                 </button>
+                {/* CLOSED Overlay */}
+                {isClosed && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <span className="bg-red-600 text-white text-lg font-bold px-6 py-2 rounded-full shadow-lg">
+                            CLOSED
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* RESTAURANT INFO */}
@@ -72,13 +106,30 @@ export default function RestaurantView({ addToCart }) {
                             <MapPin size={14} /> {restaurant.cuisine_type} • 2.5km
                         </p>
                     </div>
-                    <div className="bg-green-50 px-2 py-1 rounded-lg flex flex-col items-center">
-                        <div className="flex items-center gap-1 text-green-700 font-bold text-sm">
-                            <Star size={12} fill="currentColor" /> {restaurant.rating}
-                        </div>
-                        <span className="text-[10px] text-green-600/80">Rating</span>
+                    <div className={`px-2 py-1 rounded-lg flex flex-col items-center ${isClosed ? 'bg-red-50' : 'bg-green-50'}`}>
+                        {isClosed ? (
+                            <>
+                                <span className="text-red-700 font-bold text-sm">Closed</span>
+                                <span className="text-[10px] text-red-600/80">Currently</span>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-1 text-green-700 font-bold text-sm">
+                                    <Star size={12} fill="currentColor" /> {restaurant.rating}
+                                </div>
+                                <span className="text-[10px] text-green-600/80">Rating</span>
+                            </>
+                        )}
                     </div>
                 </div>
+
+                {/* Closed Notice Banner */}
+                {isClosed && (
+                    <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                        <p className="text-red-700 font-bold text-sm">This restaurant is currently closed</p>
+                        <p className="text-red-500 text-xs mt-0.5">Please check back later or browse other restaurants</p>
+                    </div>
+                )}
 
                 <div className="mt-4 flex gap-4 text-xs text-gray-500 border-t border-b border-gray-100 py-3">
                     <div className="flex items-center gap-1.5">
@@ -124,8 +175,9 @@ export default function RestaurantView({ addToCart }) {
                             <div className="flex justify-between items-end mt-2">
                                 <span className="font-bold text-orange-600">₱{item.price}</span>
                                 <button
-                                    onClick={() => handleAdd(item)}
-                                    className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center hover:bg-orange-600 hover:text-white transition">
+                                    onClick={() => !isClosed && handleAdd(item)}
+                                    disabled={isClosed}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition ${isClosed ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-600 hover:bg-orange-600 hover:text-white'}`}>
                                     <Plus size={18} />
                                 </button>
                             </div>
