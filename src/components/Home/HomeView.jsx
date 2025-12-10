@@ -1,8 +1,86 @@
-import { Loader, Clock, Star, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Loader, Clock, Star, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const HomeView = ({ restaurants, loading, setView, setActiveRestaurant }) => {
   const navigate = useNavigate();
+  const [currentBanner, setCurrentBanner] = useState(0);
+  const [premiumBanners, setPremiumBanners] = useState([]);
+  const [bannersLoading, setBannersLoading] = useState(true);
+
+  // Default banners (fallback when no premium restaurants)
+  const defaultBanners = [
+    {
+      id: 1,
+      title: 'Get 50% OFF',
+      subtitle: 'on Bistro Group!',
+      description: 'Valid until Dec 31 • Min. spend ₱500',
+      image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800',
+      gradient: 'from-orange-600 to-red-600',
+      cta: 'Order Now'
+    },
+    {
+      id: 2,
+      title: 'Free Delivery',
+      subtitle: 'on your first order!',
+      description: 'New users only • No min. spend',
+      image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&q=80&w=800',
+      gradient: 'from-green-600 to-teal-600',
+      cta: 'Claim Now'
+    },
+    {
+      id: 3,
+      title: '₱100 Cashback',
+      subtitle: 'when you pay with Maya',
+      description: 'Valid until Dec 25 • Limited slots',
+      image: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&q=80&w=800',
+      gradient: 'from-purple-600 to-pink-600',
+      cta: 'Learn More'
+    }
+  ];
+
+  // Gradient colors for premium banners
+  const gradients = [
+    'from-orange-600 to-red-600',
+    'from-green-600 to-teal-600',
+    'from-purple-600 to-pink-600',
+    'from-blue-600 to-indigo-600',
+    'from-rose-600 to-orange-600'
+  ];
+
+  // Fetch premium restaurants from API
+  useEffect(() => {
+    const fetchPremiumRestaurants = async () => {
+      try {
+        const response = await fetch('/hungr/api/restaurants/premium');
+        const data = await response.json();
+        if (data.success && data.data.length > 0) {
+          // Add gradient to each premium banner
+          const bannersWithGradients = data.data.map((banner, idx) => ({
+            ...banner,
+            gradient: gradients[idx % gradients.length]
+          }));
+          setPremiumBanners(bannersWithGradients);
+        }
+      } catch (err) {
+        console.error('Failed to fetch premium restaurants:', err);
+      } finally {
+        setBannersLoading(false);
+      }
+    };
+    fetchPremiumRestaurants();
+  }, []);
+
+  // Use premium banners if available, otherwise use defaults
+  const banners = premiumBanners.length > 0 ? premiumBanners : defaultBanners;
+
+  // Auto-scroll banners every 4 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentBanner((prev) => (prev + 1) % banners.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [banners.length]);
 
   const handleCategoryClick = (category) => {
     if (category === 'Pabili') {
@@ -39,25 +117,71 @@ const HomeView = ({ restaurants, loading, setView, setActiveRestaurant }) => {
         ))}
       </div>
 
-      {/* Full Width Advertisement Card */}
-      <div className="mb-8 relative rounded-2xl overflow-hidden shadow-md cursor-pointer hover:shadow-lg transition group">
-        <div className="absolute inset-0 bg-gradient-to-r from-orange-600 to-red-600 opacity-90"></div>
-        <img
-          src="https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800"
-          alt="Ad"
-          className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50 group-hover:scale-105 transition duration-500"
-        />
-        <div className="relative p-5 text-white flex flex-col justify-center min-h-[140px]">
-          <div className="bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full w-fit mb-2 flex items-center gap-1">
-            <TrendingUp size={10} /> SPONSORED
-          </div>
-          <h3 className="text-2xl font-extrabold leading-tight mb-1">
-            Get 50% OFF <br />on Bistro Group!
-          </h3>
-          <p className="text-xs text-orange-100 mb-3 opacity-90">Valid until Dec 31 • Min. spend ₱500</p>
-          <button className="bg-white text-orange-600 text-xs font-bold py-2 px-4 rounded-full w-fit hover:bg-orange-50 transition shadow-sm">
-            Order Now
-          </button>
+      {/* Auto-Scrolling Banner Carousel */}
+      <div className="mb-8 relative overflow-hidden rounded-2xl shadow-md">
+        {/* Banner Container with slide animation */}
+        <div
+          className="flex transition-transform duration-700 ease-in-out"
+          style={{ transform: `translateX(-${currentBanner * 100}%)` }}
+        >
+          {banners.map((banner) => (
+            <div
+              key={banner.id}
+              className="min-w-full relative cursor-pointer group"
+              onClick={() => {
+                if (banner.restaurantId) {
+                  navigate(`/restaurant/${banner.restaurantId}`);
+                }
+              }}
+            >
+              <div className={`absolute inset-0 bg-gradient-to-r ${banner.gradient} opacity-90`}></div>
+              <img
+                src={banner.image}
+                alt={banner.title}
+                className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50 group-hover:scale-105 transition duration-500"
+              />
+              <div className="relative p-5 text-white flex flex-col justify-center min-h-[140px]">
+                <div className="bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full w-fit mb-2 flex items-center gap-1">
+                  <TrendingUp size={10} /> SPONSORED
+                </div>
+                <h3 className="text-2xl font-extrabold leading-tight mb-1">
+                  {banner.title} <br />{banner.subtitle}
+                </h3>
+                <p className="text-xs text-white/80 mb-3 opacity-90">{banner.description}</p>
+                <button className="bg-white text-orange-600 text-xs font-bold py-2 px-4 rounded-full w-fit hover:bg-orange-50 transition shadow-sm">
+                  {banner.cta}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Navigation Arrows */}
+        <button
+          onClick={() => setCurrentBanner((prev) => (prev - 1 + banners.length) % banners.length)}
+          className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 backdrop-blur-sm p-1.5 rounded-full transition-all opacity-0 group-hover:opacity-100"
+        >
+          <ChevronLeft size={16} className="text-white" />
+        </button>
+        <button
+          onClick={() => setCurrentBanner((prev) => (prev + 1) % banners.length)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 backdrop-blur-sm p-1.5 rounded-full transition-all opacity-0 group-hover:opacity-100"
+        >
+          <ChevronRight size={16} className="text-white" />
+        </button>
+
+        {/* Dot Indicators */}
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+          {banners.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrentBanner(idx)}
+              className={`w-2 h-2 rounded-full transition-all ${idx === currentBanner
+                ? 'bg-white w-4'
+                : 'bg-white/50 hover:bg-white/70'
+                }`}
+            />
+          ))}
         </div>
       </div>
 
@@ -103,3 +227,4 @@ const HomeView = ({ restaurants, loading, setView, setActiveRestaurant }) => {
 };
 
 export default HomeView;
+

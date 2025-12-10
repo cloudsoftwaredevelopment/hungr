@@ -56,6 +56,108 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
+// ==========================================
+// 🔌 SOCKET.IO CONNECTION HANDLER
+// ==========================================
+// Store active rider sockets for room management
+const activeRiders = new Map(); // riderId -> socketId
+
+io.on('connection', (socket) => {
+    console.log(`[Socket] Client connected: ${socket.id}`);
+
+    // Rider goes online - join their dedicated room
+    socket.on('rider_online', (data) => {
+        const { riderId, latitude, longitude } = data;
+        if (riderId) {
+            socket.join(`rider_${riderId}`);
+            activeRiders.set(riderId, socket.id);
+            console.log(`[Socket] Rider #${riderId} joined room rider_${riderId}`);
+
+            // Update rider location if provided
+            if (latitude && longitude) {
+                pool.promise().execute(
+                    'UPDATE riders SET current_latitude = ?, current_longitude = ?, is_online = 1 WHERE id = ?',
+                    [latitude, longitude, riderId]
+                ).catch(err => console.error('Failed to update rider location:', err));
+            }
+        }
+    });
+
+    // Rider goes offline
+    socket.on('rider_offline', (data) => {
+        const { riderId } = data;
+        if (riderId) {
+            socket.leave(`rider_${riderId}`);
+            activeRiders.delete(riderId);
+            console.log(`[Socket] Rider #${riderId} left room`);
+        }
+    });
+
+    // Rider location update
+    socket.on('rider_location_update', async (data) => {
+        const { riderId, latitude, longitude } = data;
+        if (riderId && latitude && longitude) {
+            try {
+                await pool.promise().execute(
+                    'UPDATE riders SET current_latitude = ?, current_longitude = ?, last_location_update = NOW() WHERE id = ?',
+                    [latitude, longitude, riderId]
+                );
+            } catch (err) {
+                console.error('Failed to update rider location:', err);
+            }
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`[Socket] Client disconnected: ${socket.id}`);
+        // Remove from activeRiders map
+        for (const [riderId, socketId] of activeRiders.entries()) {
+            if (socketId === socket.id) {
+                activeRiders.delete(riderId);
+                break;
+            }
+        }
+    });
+});
+
+// Helper function to notify closest riders via Socket.io
+async function notifyClosestRiders(orderData, pickupLat, pickupLng, maxRiders = 10, maxDistanceKm = 10) {
+    try {
+        const [onlineRiders] = await pool.promise().execute(
+            'SELECT id, name, current_latitude as latitude, current_longitude as longitude FROM riders WHERE is_online = 1'
+        );
+
+        // Calculate distances using Haversine
+        const ridersWithDistance = onlineRiders
+            .filter(r => r.latitude && r.longitude)
+            .map(r => ({
+                ...r,
+                distance: haversineDistance(pickupLat, pickupLng, r.latitude, r.longitude)
+            }))
+            .filter(r => r.distance <= maxDistanceKm)
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, maxRiders);
+
+        console.log(`[Notify] Found ${ridersWithDistance.length} riders within ${maxDistanceKm}km`);
+
+        // Emit to each rider's dedicated room
+        ridersWithDistance.forEach(rider => {
+            io.to(`rider_${rider.id}`).emit('new_order', {
+                ...orderData,
+                estimatedDistance: rider.distance.toFixed(2),
+                expiresAt: Date.now() + 30000 // 30 seconds to accept
+            });
+            console.log(`[Notify] Sent order to Rider #${rider.id} (${rider.distance.toFixed(2)}km away)`);
+        });
+
+        return ridersWithDistance;
+    } catch (err) {
+        console.error('Failed to notify riders:', err);
+        return [];
+    }
+}
+
+
 app.use(cors({
     origin: ['http://localhost:3000', 'http://localhost:5173', 'https://nfcrevolution.com'],
     credentials: true
@@ -265,6 +367,90 @@ const pool = mysql.createPool({
             console.log("order_items.cost_at_time column checked/added.");
         } catch (e) {
             console.log("order_items.cost_at_time column might already exist.");
+        }
+
+        // Add premium subscription columns to restaurants
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS is_premium TINYINT(1) DEFAULT 0
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS premium_expires_at DATETIME DEFAULT NULL
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS premium_banner_image VARCHAR(255) DEFAULT NULL
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS premium_tagline VARCHAR(100) DEFAULT NULL
+            `);
+            console.log("restaurants premium columns checked/added.");
+        } catch (e) {
+            console.log("restaurants premium columns might already exist.");
+        }
+
+        // Add location columns to restaurants (for Haversine rider dispatch)
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS latitude DECIMAL(10,8) DEFAULT NULL
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS longitude DECIMAL(11,8) DEFAULT NULL
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS address VARCHAR(255) DEFAULT NULL
+            `);
+            console.log("restaurants location columns checked/added.");
+        } catch (e) {
+            console.log("restaurants location columns might already exist.");
+        }
+
+        // Add location columns to merchants (linked to restaurants)
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE merchants ADD COLUMN IF NOT EXISTS latitude DECIMAL(10,8) DEFAULT NULL
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE merchants ADD COLUMN IF NOT EXISTS longitude DECIMAL(11,8) DEFAULT NULL
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE merchants ADD COLUMN IF NOT EXISTS address VARCHAR(255) DEFAULT NULL
+            `);
+            console.log("merchants location columns checked/added.");
+        } catch (e) {
+            console.log("merchants location columns might already exist.");
+        }
+
+        // Add location columns to stores (for Pabili/Store orders)
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE stores ADD COLUMN IF NOT EXISTS latitude DECIMAL(10,8) DEFAULT NULL
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE stores ADD COLUMN IF NOT EXISTS longitude DECIMAL(11,8) DEFAULT NULL
+            `);
+            console.log("stores location columns checked/added.");
+        } catch (e) {
+            console.log("stores location columns might already exist.");
+        }
+
+        // Add rider_id to orders table (for rider assignment)
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE orders ADD COLUMN IF NOT EXISTS rider_id INT DEFAULT NULL
+            `);
+            console.log("orders.rider_id column checked/added.");
+        } catch (e) {
+            console.log("orders.rider_id column might already exist.");
+        }
+
+        // Add last_location_update to riders table
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE riders ADD COLUMN IF NOT EXISTS last_location_update DATETIME DEFAULT NULL
+            `);
+            console.log("riders.last_location_update column checked/added.");
+        } catch (e) {
+            console.log("riders.last_location_update column might already exist.");
         }
 
         console.log("Pabili and Store tables checked/created.");
@@ -622,57 +808,181 @@ app.get('/api/my-rider-profile', verifyToken, async (req, res) => {
 // 2. Toggle Status
 app.patch('/api/riders/:id/status', verifyToken, async (req, res) => {
     try {
-        const { isOnline } = req.body;
-        await db.execute('UPDATE riders SET is_online = ? WHERE id = ?', [isOnline ? 1 : 0, req.params.id]);
+        const { isOnline, latitude, longitude } = req.body;
+        if (latitude && longitude) {
+            await db.execute('UPDATE riders SET is_online = ?, current_latitude = ?, current_longitude = ? WHERE id = ?',
+                [isOnline ? 1 : 0, latitude, longitude, req.params.id]);
+        } else {
+            await db.execute('UPDATE riders SET is_online = ? WHERE id = ?', [isOnline ? 1 : 0, req.params.id]);
+        }
         sendSuccess(res, { isOnline }, "Status updated");
     } catch (err) {
         sendError(res, 500, "Update failed");
     }
 });
 
-// 3. Get Available Orders (For now, simplified to show ALL pending store orders to ALL online riders, or strictly assigned ones)
-// The Haversine algo notified them, but we need an endpoint for them to "poll" or "see" the orders.
-// We will return pending Store Orders that are NOT yet assigned.
+// 2b. Update Rider Location (called every 10 seconds when online)
+app.patch('/api/riders/:id/location', verifyToken, async (req, res) => {
+    try {
+        const { latitude, longitude } = req.body;
+        if (!latitude || !longitude) {
+            return sendError(res, 400, "Latitude and longitude required");
+        }
+        await db.execute(
+            'UPDATE riders SET current_latitude = ?, current_longitude = ?, last_location_update = NOW() WHERE id = ?',
+            [latitude, longitude, req.params.id]
+        );
+        sendSuccess(res, { latitude, longitude }, "Location updated");
+    } catch (err) {
+        sendError(res, 500, "Location update failed", "DB_ERROR", err);
+    }
+});
+
+// 3. Get Available Orders (includes both Store and Food orders)
+// Supports proximity filtering via query params: ?lat=X&lng=Y&maxDistance=5
 app.get('/api/riders/:id/orders', verifyToken, async (req, res) => {
     try {
         const riderId = req.params.id;
+        const { lat, lng, maxDistance = 10 } = req.query;
 
         // Fetch Store Paid Orders that are 'paid' (ready for pickup) and rider_id is NULL
-        // In a real app, we might filter by proximity again or check a 'notifications' table.
-        // For MVP/Demo: Return ALL pending store orders to the rider.
         const storeOrders = await db.query(`
-            SELECT o.id, o.total_amount as fee, s.name as title, s.address as pickup_location, 'store' as order_type
+            SELECT o.id, o.total_amount as fee, s.name as title, s.address as pickup_location, 
+                   s.latitude as pickup_lat, s.longitude as pickup_lng, 'store' as order_type,
+                   o.created_at
             FROM store_paid_orders o
             JOIN stores s ON o.store_id = s.id
             WHERE o.status = 'paid' AND o.rider_id IS NULL
             ORDER BY o.created_at DESC
         `);
 
-        // You can join with other order types here if needed
-        sendSuccess(res, { orders: storeOrders });
+        // Fetch Food Orders that have dispatch_code (merchant notified riders) - includes preparing AND ready
+        const foodOrders = await db.query(`
+            SELECT o.id, o.total_amount as fee, r.name as title, r.address as pickup_location,
+                   r.latitude as pickup_lat, r.longitude as pickup_lng, 'food' as order_type,
+                   o.created_at, o.dispatch_code, o.status
+            FROM orders o
+            JOIN restaurants r ON o.restaurant_id = r.id
+            WHERE o.status IN ('preparing', 'ready_for_pickup') AND o.rider_id IS NULL AND o.dispatch_code IS NOT NULL
+            ORDER BY o.created_at DESC
+        `);
+
+        // Combine all orders
+        let allOrders = [...storeOrders, ...foodOrders];
+
+        // Apply proximity filtering if rider location provided
+        if (lat && lng) {
+            const riderLat = parseFloat(lat);
+            const riderLng = parseFloat(lng);
+            const maxDist = parseFloat(maxDistance);
+
+            allOrders = allOrders
+                .filter(o => o.pickup_lat && o.pickup_lng)
+                .map(o => ({
+                    ...o,
+                    distance: haversineDistance(riderLat, riderLng, o.pickup_lat, o.pickup_lng)
+                }))
+                .filter(o => o.distance <= maxDist)
+                .sort((a, b) => a.distance - b.distance);
+        }
+
+        // Sort by newest first if no distance filtering
+        if (!lat || !lng) {
+            allOrders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        }
+
+        sendSuccess(res, { orders: allOrders });
     } catch (err) {
         sendError(res, 500, "Fetch orders failed", "DB_ERROR", err);
     }
 });
 
-// 4. Accept Order
+// 4. Accept Order (handles both food and store orders)
 app.post('/api/riders/:id/orders/:orderId/accept', verifyToken, async (req, res) => {
     try {
         const { id: riderId, orderId } = req.params;
+        const { orderType = 'store' } = req.body; // 'food' or 'store'
 
-        // Optimistic Locking / Transaction needed in real app
-        // Check if still available
-        const [check] = await db.execute('SELECT id FROM store_paid_orders WHERE id = ? AND rider_id IS NULL', [orderId]);
-        if (check.length === 0) return sendError(res, 409, "Order already taken");
+        // Get rider info
+        const [riderRows] = await db.execute('SELECT id, name, current_latitude, current_longitude FROM riders WHERE id = ?', [riderId]);
+        if (riderRows.length === 0) return sendError(res, 404, "Rider not found");
 
-        await db.execute('UPDATE store_paid_orders SET rider_id = ?, status = ? WHERE id = ?', [riderId, 'assigned', orderId]);
+        const rider = riderRows[0];
+        let restaurantId, restaurantName, restaurantLat, restaurantLng, restaurantAddress;
 
-        // Notify User/Merchant (Mock)
-        console.log(`[Order #${orderId}] Accepted by Rider #${riderId}`);
+        if (orderType === 'food') {
+            // Handle food order
+            const [check] = await db.execute('SELECT o.id, o.restaurant_id, r.name, r.latitude, r.longitude, r.address FROM orders o JOIN restaurants r ON o.restaurant_id = r.id WHERE o.id = ? AND o.rider_id IS NULL', [orderId]);
+            if (check.length === 0) return sendError(res, 409, "Order already taken or not found");
 
-        sendSuccess(res, null, "Order accepted");
+            restaurantId = check[0].restaurant_id;
+            restaurantName = check[0].name;
+            restaurantLat = parseFloat(check[0].latitude);
+            restaurantLng = parseFloat(check[0].longitude);
+            restaurantAddress = check[0].address || '';
+
+            // Update order with rider assignment (use 'delivering' status which is in the ENUM)
+            await db.execute('UPDATE orders SET rider_id = ?, status = ? WHERE id = ?', [riderId, 'delivering', orderId]);
+        } else {
+            // Handle store order
+            const [check] = await db.execute('SELECT o.id, o.store_id, s.name, s.latitude, s.longitude, s.address FROM store_paid_orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ? AND o.rider_id IS NULL', [orderId]);
+            if (check.length === 0) return sendError(res, 409, "Order already taken or not found");
+
+            restaurantId = check[0].store_id;
+            restaurantName = check[0].name;
+            restaurantLat = parseFloat(check[0].latitude || 0);
+            restaurantLng = parseFloat(check[0].longitude || 0);
+            restaurantAddress = check[0].address || '';
+
+            await db.execute('UPDATE store_paid_orders SET rider_id = ?, status = ? WHERE id = ?', [riderId, 'assigned', orderId]);
+        }
+
+        // Calculate ETA based on distance (assume 20km/h average speed for motorcycle in city)
+        let etaMinutes = 10; // default
+        let distance = 0;
+        if (rider.current_latitude && rider.current_longitude && restaurantLat && restaurantLng) {
+            distance = haversineDistance(
+                rider.current_latitude, rider.current_longitude,
+                restaurantLat, restaurantLng
+            );
+            // 20km/h = 0.33 km/min, so time = distance / 0.33
+            etaMinutes = Math.ceil(distance / 0.33);
+            if (etaMinutes < 2) etaMinutes = 2; // minimum 2 minutes
+            if (etaMinutes > 60) etaMinutes = 60; // cap at 60 minutes
+        }
+
+        const etaArrival = new Date(Date.now() + etaMinutes * 60 * 1000);
+
+        // Notify merchant via Socket.IO
+        io.emit(`merchant_${restaurantId}_rider_accepted`, {
+            orderId: parseInt(orderId),
+            orderType,
+            riderId: parseInt(riderId),
+            riderName: rider.name,
+            eta: etaMinutes,
+            etaArrival: etaArrival.toISOString(),
+            distance: distance.toFixed(2),
+            message: `${rider.name} is on the way! ETA: ${etaMinutes} min`
+        });
+
+        console.log(`[Order #${orderId}] Accepted by Rider #${riderId} (${rider.name}). ETA: ${etaMinutes} min, Distance: ${distance.toFixed(2)}km`);
+
+        sendSuccess(res, {
+            orderId: parseInt(orderId),
+            riderId: parseInt(riderId),
+            eta: etaMinutes,
+            etaArrival: etaArrival.toISOString(),
+            distance: distance.toFixed(2),
+            pickup: {
+                name: restaurantName,
+                address: restaurantAddress,
+                latitude: restaurantLat,
+                longitude: restaurantLng
+            }
+        }, "Order accepted! Navigate to pickup location.");
     } catch (err) {
-        sendError(res, 500, "Accept failed");
+        console.error("Accept order error:", err);
+        sendError(res, 500, "Accept failed", "DB_ERROR", err);
     }
 });
 
@@ -713,7 +1023,7 @@ app.get('/api/riders/:id/earnings', verifyToken, async (req, res) => {
                 o.status,
                 s.name as store_name
             FROM store_paid_orders o
-            LEFT JOIN shops s ON o.store_id = s.id
+            LEFT JOIN stores s ON o.store_id = s.id
             WHERE o.rider_id = ? AND o.status IN ('completed', 'delivered', 'assigned')
             ORDER BY o.created_at DESC
             LIMIT 50
@@ -849,6 +1159,39 @@ apiRouter.post('/merchant/status', verifyToken, async (req, res) => {
     } catch (err) {
         console.error("Status Update Failed", err);
         sendError(res, 500, "Update failed");
+    }
+});
+
+// Update Merchant Location (for Haversine rider dispatch)
+apiRouter.patch('/merchant/location', verifyToken, async (req, res) => {
+    try {
+        const { latitude, longitude, address } = req.body;
+        const restaurantId = req.user.restaurantId;
+        const merchantId = req.user.merchantId;
+
+        if (!latitude || !longitude) {
+            return sendError(res, 400, "Latitude and longitude are required");
+        }
+
+        // Update restaurant location
+        await db.execute(
+            'UPDATE restaurants SET latitude = ?, longitude = ?, address = ? WHERE id = ?',
+            [latitude, longitude, address || null, restaurantId]
+        );
+
+        // Update merchant location if merchantId exists
+        if (merchantId) {
+            await db.execute(
+                'UPDATE merchants SET latitude = ?, longitude = ?, address = ? WHERE id = ?',
+                [latitude, longitude, address || null, merchantId]
+            );
+        }
+
+        console.log(`[Merchant] Restaurant #${restaurantId} location updated: ${latitude}, ${longitude}`);
+        sendSuccess(res, { latitude, longitude, address }, "Location updated successfully");
+    } catch (err) {
+        console.error("Merchant location update error:", err);
+        sendError(res, 500, 'Failed to update location', 'DB_ERROR', err);
     }
 });
 
@@ -1046,6 +1389,21 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
 
                     // Emit notification to each rider via Socket.IO with dispatch code
                     closestRiders.forEach(rider => {
+                        // New: Emit to rider's dedicated room (industry standard)
+                        io.to(`rider_${rider.id}`).emit('new_order', {
+                            orderId,
+                            orderType: type || 'food',
+                            restaurantId,
+                            restaurantName: restName,
+                            restaurantAddress: restAddress,
+                            totalAmount: parseFloat(totalAmount).toFixed(2),
+                            dispatchCode,
+                            message: `Pickup at ${restName} - ₱${parseFloat(totalAmount).toFixed(2)}`,
+                            estimatedDistance: rider.distance.toFixed(2),
+                            expiresAt: Date.now() + 30000 // 30 seconds to accept
+                        });
+
+                        // Legacy: Also emit to rider-specific event
                         io.emit(`rider_${rider.id}_new_order`, {
                             orderId,
                             orderType: type || 'food',
@@ -1136,6 +1494,21 @@ apiRouter.post('/merchant/orders/:id/notify-riders', verifyToken, async (req, re
 
         // Emit notification to each rider via Socket.IO with dispatch code
         closestRiders.forEach(rider => {
+            // New: Emit to rider's dedicated room (industry standard)
+            io.to(`rider_${rider.id}`).emit('new_order', {
+                orderId,
+                orderType: type || 'food',
+                restaurantId,
+                restaurantName: restName,
+                restaurantAddress: restAddress,
+                totalAmount: parseFloat(totalAmount).toFixed(2),
+                dispatchCode,
+                message: `Pickup at ${restName} - ₱${parseFloat(totalAmount).toFixed(2)}`,
+                estimatedDistance: rider.distance.toFixed(2),
+                expiresAt: Date.now() + 30000 // 30 seconds to accept
+            });
+
+            // Legacy: Also emit to rider-specific event for backward compatibility
             io.emit(`rider_${rider.id}_new_order`, {
                 orderId,
                 orderType: type || 'food',
@@ -1713,6 +2086,40 @@ apiRouter.post('/restaurants/:id/watch', verifyToken, async (req, res) => {
         sendError(res, 500, 'Failed to watch restaurant');
     }
 });
+
+// Get Premium Restaurants (for customer app banner carousel)
+apiRouter.get('/restaurants/premium', async (req, res) => {
+    try {
+        // Get restaurants where is_premium = 1 AND premium_expires_at is in the future
+        const results = await db.query(`
+            SELECT id, name, cuisine_type, image_url, rating, delivery_time_min, delivery_time_max,
+                   premium_banner_image, premium_tagline
+            FROM restaurants 
+            WHERE is_premium = 1 
+              AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+            ORDER BY rating DESC
+            LIMIT 10
+        `);
+
+        // Transform results for banner display
+        const banners = results.map(r => ({
+            id: r.id,
+            restaurantId: r.id,
+            title: r.premium_tagline || r.name,
+            subtitle: r.cuisine_type ? `Best ${r.cuisine_type} in town!` : 'Order Now!',
+            description: `⭐ ${r.rating} rating • ${r.delivery_time_min}-${r.delivery_time_max} min delivery`,
+            image: r.premium_banner_image || r.image_url || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800',
+            restaurantName: r.name,
+            cta: 'Order Now'
+        }));
+
+        sendSuccess(res, banners);
+    } catch (err) {
+        console.error("Premium restaurants fetch error:", err);
+        sendError(res, 500, 'Failed to fetch premium restaurants');
+    }
+});
+
 apiRouter.get('/restaurants', async (req, res) => {
     try {
         const results = await db.query('SELECT * FROM restaurants ORDER BY rating DESC');
@@ -1725,12 +2132,13 @@ apiRouter.get('/restaurants', async (req, res) => {
 // Mount Router
 app.use('/api', apiRouter);
 app.use('/hungr/api', apiRouter); // Support subpath API calls
+app.use('/hungrriders/api', apiRouter); // Support rider app API calls
 
 
 // --- SPA CATCH-ALL (Fixes 404s) ---
 app.get('*', (req, res) => {
-    // If it starts with /api or /hungr/api, it's a real 404 from the API
-    if (req.url.startsWith('/api/') || req.url.startsWith('/hungr/api/')) {
+    // If it starts with /api or /hungr/api or /hungrriders/api, it's a real 404 from the API
+    if (req.url.startsWith('/api/') || req.url.startsWith('/hungr/api/') || req.url.startsWith('/hungrriders/api/')) {
         return sendError(res, 404, 'API Endpoint not found');
     }
     // Otherwise, it's a frontend route (like /login or /hungr/login), so serve index.html
