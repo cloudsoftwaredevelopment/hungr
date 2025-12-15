@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { MapPin, Wallet, List, AlertCircle, Phone, Mail, ChevronRight, LogOut, Camera, Loader } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import LocationSettings from './LocationSettings';
 
 const API_URL = '/api';
 
 const ProfileView = ({ setView }) => {
-  const { user, logout, login } = useAuth(); 
+  const { user, logout, login } = useAuth();
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -20,9 +21,9 @@ const ProfileView = ({ setView }) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) { 
-        alert("File is too large. Please select an image under 5MB.");
-        return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File is too large. Please select an image under 5MB.");
+      return;
     }
 
     setUploading(true);
@@ -30,41 +31,41 @@ const ProfileView = ({ setView }) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
-        const base64Image = reader.result;
-        
-        try {
-            const token = sessionStorage.getItem('accessToken');
-            const response = await fetch(`${API_URL}/users/profile`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` 
-                },
-                body: JSON.stringify({ profile_image: base64Image })
-            });
-            
-            // Check for Session Expiry (403/401)
-            if (response.status === 403 || response.status === 401) {
-                alert("Session expired. Please login again.");
-                logout();
-                return;
-            }
+      const base64Image = reader.result;
 
-            const data = await response.json();
-            if (data.success) {
-                const updatedUser = { ...user, profile_image: base64Image };
-                sessionStorage.setItem('user', JSON.stringify(updatedUser));
-                alert("Profile photo updated!");
-                window.location.reload(); 
-            } else {
-                alert("Failed to update profile: " + data.error);
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Error uploading image. Server might be offline or busy.");
-        } finally {
-            setUploading(false);
+      try {
+        const token = sessionStorage.getItem('accessToken');
+        const response = await fetch(`${API_URL}/users/profile`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ profile_image: base64Image })
+        });
+
+        // Check for Session Expiry (403/401)
+        if (response.status === 403 || response.status === 401) {
+          alert("Session expired. Please login again.");
+          logout();
+          return;
         }
+
+        const data = await response.json();
+        if (data.success) {
+          const updatedUser = { ...user, profile_image: base64Image };
+          sessionStorage.setItem('user', JSON.stringify(updatedUser));
+          alert("Profile photo updated!");
+          window.location.reload();
+        } else {
+          alert("Failed to update profile: " + data.error);
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Error uploading image. Server might be offline or busy.");
+      } finally {
+        setUploading(false);
+      }
     };
   };
 
@@ -80,7 +81,7 @@ const ProfileView = ({ setView }) => {
     { label: 'Saved Addresses', icon: MapPin, action: () => setView('addresses') },
     { label: 'Payment Methods', icon: Wallet, action: () => setView('wallet') },
     { label: 'Order History', icon: List, action: () => setView('transactions') },
-    { label: 'Help Center', icon: AlertCircle, action: () => {} },
+    { label: 'Help Center', icon: AlertCircle, action: () => { } },
   ];
 
   return (
@@ -88,38 +89,38 @@ const ProfileView = ({ setView }) => {
       {/* Profile Header */}
       <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col items-center gap-4 mb-6">
         <div className="relative">
-            <div className="w-24 h-24 rounded-full border-4 border-orange-50 overflow-hidden bg-gray-100 flex items-center justify-center">
-                {user.profile_image ? (
-                    <img src={user.profile_image} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                    <span className="text-3xl font-bold text-orange-300">{user.username?.charAt(0).toUpperCase() || 'U'}</span>
-                )}
-            </div>
-            <button 
-                onClick={() => fileInputRef.current.click()}
-                className="absolute bottom-0 right-0 bg-orange-600 text-white p-2 rounded-full shadow-md hover:bg-orange-700 transition"
-                disabled={uploading}
-            >
-                {uploading ? <Loader size={14} className="animate-spin" /> : <Camera size={14} />}
-            </button>
-            <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                accept="image/*" 
-                className="hidden" 
-            />
+          <div className="w-24 h-24 rounded-full border-4 border-orange-50 overflow-hidden bg-gray-100 flex items-center justify-center">
+            {user.profile_image ? (
+              <img src={user.profile_image} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-3xl font-bold text-orange-300">{user.username?.charAt(0).toUpperCase() || 'U'}</span>
+            )}
+          </div>
+          <button
+            onClick={() => fileInputRef.current.click()}
+            className="absolute bottom-0 right-0 bg-orange-600 text-white p-2 rounded-full shadow-md hover:bg-orange-700 transition"
+            disabled={uploading}
+          >
+            {uploading ? <Loader size={14} className="animate-spin" /> : <Camera size={14} />}
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*"
+            className="hidden"
+          />
         </div>
-        
+
         <div className="text-center w-full">
           <h3 className="font-bold text-xl text-gray-900">{user.username}</h3>
-          
+
           {user.phone_number && (
             <p className="text-sm text-gray-500 flex items-center justify-center gap-1 mt-1">
               <Phone size={14} /> {user.phone_number}
             </p>
           )}
-          
+
           <p className="text-sm text-gray-500 flex items-center justify-center gap-1 mt-0.5">
             <Mail size={14} /> {user.email}
           </p>
@@ -127,18 +128,23 @@ const ProfileView = ({ setView }) => {
           {/* Added Address Display/Edit Link */}
           {user.address ? (
             <p className="text-sm text-gray-500 flex items-center justify-center gap-1 mt-1 px-4 text-center">
-              <MapPin size={14} className="flex-shrink-0" /> 
+              <MapPin size={14} className="flex-shrink-0" />
               <span className="truncate max-w-[200px]">{user.address}</span>
             </p>
           ) : (
-            <button 
-                onClick={() => setView('addresses')}
-                className="text-sm text-orange-600 font-bold flex items-center justify-center gap-1 mt-2 mx-auto hover:underline"
+            <button
+              onClick={() => setView('addresses')}
+              className="text-sm text-orange-600 font-bold flex items-center justify-center gap-1 mt-2 mx-auto hover:underline"
             >
               <MapPin size={14} /> Add Address
             </button>
           )}
         </div>
+      </div>
+
+      {/* GPS Location Settings */}
+      <div className="mb-6">
+        <LocationSettings />
       </div>
 
       {/* Menu Items */}

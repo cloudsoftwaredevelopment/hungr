@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hungr Admin - Wallet Approvals</title>
+    <style>
+        :root {
+            --orange: #f97316;
+            --orange-dark: #ea580c;
+            --green: #22c55e;
+            --red: #ef4444;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-500: #6b7280;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--gray-100);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+            color: white;
+            padding: 24px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 800;
+        }
+
+        .header-sub {
+            opacity: 0.9;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Login Form */
+        .login-card {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            max-width: 400px;
+            margin: 100px auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .login-card h2 {
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+
+        .login-card p {
+            color: var(--gray-500);
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--orange);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--orange);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--orange-dark);
+        }
+
+        .btn:disabled {
+            background: var(--gray-200);
+            cursor: not-allowed;
+        }
+
+        .error {
+            color: var(--red);
+            background: #fef2f2;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--gray-900);
+        }
+
+        .stat-label {
+            color: var(--gray-500);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .stat-card.pending .stat-value {
+            color: var(--orange);
+        }
+
+        .stat-card.approved .stat-value {
+            color: var(--green);
+        }
+
+        /* Request Cards */
+        .requests {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .request-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .request-id {
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+
+        .request-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .request-status.pending {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        .request-status.approved {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+
+        .request-status.rejected {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .request-body {
+            display: grid;
+            grid-template-columns: 1fr 200px;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .request-info {
+            display: grid;
+            gap: 12px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+
+        .info-label {
+            color: var(--gray-500);
+        }
+
+        .info-value {
+            font-weight: 600;
+            color: var(--gray-900);
+        }
+
+        .info-value.amount {
+            color: var(--orange);
+            font-size: 20px;
+        }
+
+        .proof-image {
+            width: 200px;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid var(--gray-200);
+            cursor: pointer;
+        }
+
+        .request-actions {
+            display: flex;
+            gap: 12px;
+            padding: 16px 20px;
+            border-top: 1px solid var(--gray-100);
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .action-btn:hover {
+            opacity: 0.9;
+        }
+
+        .action-btn.approve {
+            background: var(--green);
+            color: white;
+        }
+
+        .action-btn.reject {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 100;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 16px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: auto;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+            color: var(--gray-900);
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid var(--gray-200);
+            display: flex;
+            gap: 12px;
+        }
+
+        .modal-footer .btn {
+            flex: 1;
+        }
+
+        .modal-footer .btn.cancel {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--gray-500);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray-500);
+        }
+
+        .empty-state h3 {
+            color: var(--gray-700);
+            margin-bottom: 8px;
+        }
+
+        /* Image Preview Modal */
+        .image-modal img {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+
+        /* Knowledge Base Styles */
+        .kb-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .kb-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .kb-card h2 {
+            color: var(--gray-900);
+            font-size: 20px;
+            margin-bottom: 16px;
+        }
+
+        .kb-card p {
+            color: var(--gray-700);
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .kb-card ul,
+        .kb-card ol {
+            margin-left: 20px;
+            color: var(--gray-700);
+            line-height: 1.8;
+        }
+
+        .kb-card li {
+            margin-bottom: 8px;
+        }
+
+        .kb-card.warning {
+            border-left: 4px solid var(--red);
+            background: #fef2f2;
+        }
+
+        .kb-card.security {
+            border-left: 4px solid var(--green);
+            background: #f0fdf4;
+        }
+
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .step {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .step-num {
+            width: 32px;
+            height: 32px;
+            background: var(--orange);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .step-content h4 {
+            color: var(--gray-900);
+            margin-bottom: 4px;
+        }
+
+        .step-content p {
+            color: var(--gray-600);
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .security-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .security-item {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--gray-200);
+        }
+
+        .security-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .security-item h4 {
+            color: var(--gray-900);
+            margin-bottom: 6px;
+            font-size: 15px;
+        }
+
+        .security-item p {
+            color: var(--gray-600);
+            font-size: 13px;
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .checklist {
+            margin-left: 20px;
+        }
+
+        .checklist li {
+            color: var(--gray-700);
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        .faq-item {
+            padding: 16px 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .faq-item:last-child {
+            border-bottom: none;
+        }
+
+        .faq-item h4 {
+            color: var(--gray-900);
+            margin-bottom: 6px;
+        }
+
+        .faq-item p {
+            color: var(--gray-600);
+            margin: 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Login View -->
+    <div id="loginView" class="container">
+        <div class="login-card">
+            <h2>🔐 Admin Login</h2>
+            <p>Login with your merchant account to manage wallet approvals</p>
+            <div id="loginError" class="error hidden"></div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" required placeholder="admin@hungr.food">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label>System Key</label>
+                    <input type="password" id="systemKey" required placeholder="WALLET_SYSTEM_KEY from .env">
+                </div>
+                <button type="submit" class="btn" id="loginBtn">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboardView" class="container hidden">
+        <div class="header">
+            <div>
+                <h1>💰 Wallet Admin</h1>
+                <div class="header-sub" id="headerSubtitle">Manage merchant top-up requests</div>
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <button class="logout-btn" onclick="showTab('requests')" id="tabRequests"
+                    style="background: rgba(255,255,255,0.4);">📋 Requests</button>
+                <button class="logout-btn" onclick="showTab('kb')" id="tabKb">📚 Knowledge Base</button>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <!-- Requests Tab -->
+        <div id="requestsTab">
+            <!-- Wallet Type Toggle -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <button id="btnMerchant" onclick="switchWalletType('merchant')"
+                    style="flex:1; padding: 12px; border: 2px solid #f97316; background: #f97316; color: white; border-radius: 8px; font-weight: 700; cursor: pointer;">
+                    🏪 Merchants
+                </button>
+                <button id="btnCustomer" onclick="switchWalletType('customer')"
+                    style="flex:1; padding: 12px; border: 2px solid #f97316; background: white; color: #f97316; border-radius: 8px; font-weight: 700; cursor: pointer;">
+                    👤 Customers
+                </button>
+                <button id="btnRider" onclick="switchWalletType('rider')"
+                    style="flex:1; padding: 12px; border: 2px solid #f97316; background: white; color: #f97316; border-radius: 8px; font-weight: 700; cursor: pointer;">
+                    🏍️ Riders
+                </button>
+            </div>
+
+            <div class="stats">
+                <div class="stat-card pending">
+                    <div class="stat-value" id="pendingCount">0</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card approved">
+                    <div class="stat-value" id="approvedCount">0</div>
+                    <div class="stat-label">Approved Today</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="totalAmount">₱0</div>
+                    <div class="stat-label">Pending Amount</div>
+                </div>
+            </div>
+
+            <div id="requestsContainer" class="requests">
+                <div class="loading">Loading requests...</div>
+            </div>
+        </div>
+
+        <!-- Knowledge Base Tab -->
+        <div id="kbTab" class="hidden">
+            <div class="kb-container">
+                <!-- What is the Wallet -->
+                <div class="kb-card">
+                    <h2>📱 What is the Hungr Merchant Wallet?</h2>
+                    <p>The Hungr Merchant Wallet is a digital wallet inside the Hungr Merchant App. Merchants can:</p>
+                    <ul>
+                        <li><strong>Add money (Top-Up)</strong> - Deposit funds to use for Hungr services</li>
+                        <li><strong>Withdraw money</strong> - Transfer wallet balance to their bank or e-wallet</li>
+                        <li><strong>View history</strong> - See all their transactions</li>
+                    </ul>
+                </div>
+
+                <!-- Top-Up Process -->
+                <div class="kb-card">
+                    <h2>💵 How Merchants Deposit Money (Top-Up)</h2>
+                    <div class="step-list">
+                        <div class="step">
+                            <div class="step-num">1</div>
+                            <div class="step-content">
+                                <h4>Merchant sends money to Hungr</h4>
+                                <p>They deposit to our bank account OR send via GCash/Maya. They keep the reference
+                                    number and take a screenshot.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">2</div>
+                            <div class="step-content">
+                                <h4>Merchant submits request in the app</h4>
+                                <p>In the Merchant App → Wallet → Top Up, they enter the amount, payment method,
+                                    reference number, and upload the screenshot as proof.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">3</div>
+                            <div class="step-content">
+                                <h4>Admin verifies and approves</h4>
+                                <p>You (admin) check if the payment actually arrived in our account. Look at the proof
+                                    screenshot, verify the amount matches, then click <strong>Approve</strong>.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">4</div>
+                            <div class="step-content">
+                                <h4>Merchant wallet is credited</h4>
+                                <p>Once approved, the money is instantly added to their wallet balance. They get a
+                                    notification in their app.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Withdrawal Process -->
+                <div class="kb-card">
+                    <h2>💸 How Merchants Withdraw Money</h2>
+                    <div class="step-list">
+                        <div class="step">
+                            <div class="step-num">1</div>
+                            <div class="step-content">
+                                <h4>Merchant must enable 2FA first</h4>
+                                <p>For security, merchants need to set up Google Authenticator before they can withdraw.
+                                    This is a one-time setup.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">2</div>
+                            <div class="step-content">
+                                <h4>Merchant submits withdrawal request</h4>
+                                <p>In the app → Wallet → Withdraw, they enter the amount, destination (GCash/Maya/Bank),
+                                    account number, and the 6-digit code from their authenticator app.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num">3</div>
+                            <div class="step-content">
+                                <h4>Admin processes the payout</h4>
+                                <p>Manual payout is done by finance team. The system records the request and the
+                                    merchant is notified when complete.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Security Features -->
+                <div class="kb-card security">
+                    <h2>🔒 Security Features (Why Our Wallet is Secure)</h2>
+                    <div class="security-grid">
+                        <div class="security-item">
+                            <div class="security-icon">📒</div>
+                            <h4>Unchangeable Transaction History</h4>
+                            <p>Once money is added or removed, no one can edit or delete the record. The database has
+                                special locks that prevent this.</p>
+                        </div>
+                        <div class="security-item">
+                            <div class="security-icon">🔗</div>
+                            <h4>Chain of Records</h4>
+                            <p>Every transaction is linked to the previous one using special codes. If anyone tries to
+                                change old records, the system will know.</p>
+                        </div>
+                        <div class="security-item">
+                            <div class="security-icon">🔑</div>
+                            <h4>Two Keys Required</h4>
+                            <p>To approve a top-up, you need BOTH your login AND the System Key. Even if someone steals
+                                your password, they can't approve without the key.</p>
+                        </div>
+                        <div class="security-item">
+                            <div class="security-icon">📱</div>
+                            <h4>Google Authenticator for Withdrawals</h4>
+                            <p>Merchants must enter a code from their phone every time they withdraw. The code changes
+                                every 30 seconds.</p>
+                        </div>
+                        <div class="security-item">
+                            <div class="security-icon">🚫</div>
+                            <h4>No Duplicate Transactions</h4>
+                            <p>If a merchant accidentally clicks "Submit" twice, the system will only process it once.
+                                No double charges!</p>
+                        </div>
+                        <div class="security-item">
+                            <div class="security-icon">📋</div>
+                            <h4>Everything is Logged</h4>
+                            <p>Every action (who approved what, when, from where) is recorded. This helps us track any
+                                suspicious activity.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- How to Approve -->
+                <div class="kb-card">
+                    <h2>✅ How to Approve a Top-Up Request</h2>
+                    <ol class="checklist">
+                        <li>Check our <strong>bank account or GCash</strong> for the incoming payment</li>
+                        <li>Match the <strong>amount</strong> - does the deposit match what they're requesting?</li>
+                        <li>Match the <strong>reference number</strong> - is it the same as in our account?</li>
+                        <li>Look at the <strong>proof screenshot</strong> - click to enlarge and verify</li>
+                        <li>If everything matches, click <strong>Approve</strong></li>
+                        <li>Add notes (optional) like "Verified in BDO 12:30pm"</li>
+                    </ol>
+                </div>
+
+                <!-- When to Reject -->
+                <div class="kb-card warning">
+                    <h2>❌ When to Reject a Request</h2>
+                    <p>Reject a request if:</p>
+                    <ul>
+                        <li>The payment <strong>did not arrive</strong> in our account</li>
+                        <li>The amount in the proof <strong>doesn't match</strong> the request</li>
+                        <li>The screenshot looks <strong>fake or edited</strong></li>
+                        <li>The reference number is <strong>already used</strong> in a previous request</li>
+                        <li>The payment is <strong>too old</strong> (more than 7 days)</li>
+                    </ul>
+                    <p style="margin-top: 12px;"><strong>Always write a clear reason</strong> so the merchant
+                        understands why it was rejected.</p>
+                </div>
+
+                <!-- FAQ -->
+                <div class="kb-card">
+                    <h2>❓ Frequently Asked Questions</h2>
+
+                    <div class="faq-item">
+                        <h4>Q: Can I undo an approval?</h4>
+                        <p>A: No. Once approved, the transaction is permanent. This is a security feature. If there was
+                            an error, contact the tech team.</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Q: What if I can't see the proof image?</h4>
+                        <p>A: The image might not have uploaded correctly. Ask the merchant to submit a new request with
+                            a clearer screenshot.</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Q: How long should approval take?</h4>
+                        <p>A: Try to approve within 24 hours. Merchants are waiting for their balance to be credited.
+                        </p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Q: What's the System Key?</h4>
+                        <p>A: It's a secret password shared only with authorized admins. It's required to approve
+                            transactions. Never share it with anyone outside the admin team.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Approve Modal -->
+    <div id="approveModal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>✅ Approve Top-Up</h3>
+            </div>
+            <div class="modal-body">
+                <p>You are about to approve <strong id="approveAmount">₱0</strong> for <strong
+                        id="approveMerchant">Merchant</strong>.</p>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Notes (optional)</label>
+                    <input type="text" id="approveNotes" placeholder="e.g. Verified in BDO account">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn cancel" onclick="closeModal('approveModal')">Cancel</button>
+                <button class="btn" onclick="confirmApprove()" id="confirmApproveBtn">Approve</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reject Modal -->
+    <div id="rejectModal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>❌ Reject Request</h3>
+            </div>
+            <div class="modal-body">
+                <p>You are about to reject the top-up request from <strong id="rejectMerchant">Merchant</strong>.</p>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Reason</label>
+                    <input type="text" id="rejectReason" placeholder="e.g. Invalid proof, amount mismatch" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn cancel" onclick="closeModal('rejectModal')">Cancel</button>
+                <button class="btn" style="background: var(--red);" onclick="confirmReject()"
+                    id="confirmRejectBtn">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="imageModal" class="modal-overlay hidden" onclick="closeModal('imageModal')">
+        <div class="modal image-modal" style="max-width: 800px;">
+            <img id="previewImage" src="" alt="Proof">
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/hungr/api';
+        let authToken = '';
+        let systemKey = '';
+        let currentRequests = [];
+        let selectedRequestId = null;
+        let walletType = 'merchant'; // 'merchant' or 'customer'
+
+        // Switch between merchant and customer wallets
+        function switchWalletType(type) {
+            walletType = type;
+            const btnMerchant = document.getElementById('btnMerchant');
+            const btnCustomer = document.getElementById('btnCustomer');
+            const btnRider = document.getElementById('btnRider');
+            const subtitle = document.getElementById('headerSubtitle');
+
+            // Reset all buttons
+            [btnMerchant, btnCustomer, btnRider].forEach(btn => {
+                btn.style.background = 'white';
+                btn.style.color = '#f97316';
+            });
+
+            if (type === 'merchant') {
+                btnMerchant.style.background = '#f97316';
+                btnMerchant.style.color = 'white';
+                subtitle.textContent = 'Manage merchant top-up requests';
+            } else if (type === 'customer') {
+                btnCustomer.style.background = '#f97316';
+                btnCustomer.style.color = 'white';
+                subtitle.textContent = 'Manage customer top-up requests';
+            } else {
+                btnRider.style.background = '#f97316';
+                btnRider.style.color = 'white';
+                subtitle.textContent = 'Manage rider top-up requests';
+            }
+            loadRequests();
+        }
+
+        // Check if already logged in
+        document.addEventListener('DOMContentLoaded', () => {
+            authToken = sessionStorage.getItem('adminToken');
+            systemKey = sessionStorage.getItem('systemKey');
+            if (authToken && systemKey) {
+                showDashboard();
+            }
+        });
+
+        // Tab switching
+        function showTab(tab) {
+            if (tab === 'requests') {
+                document.getElementById('requestsTab').classList.remove('hidden');
+                document.getElementById('kbTab').classList.add('hidden');
+                document.getElementById('tabRequests').style.background = 'rgba(255,255,255,0.4)';
+                document.getElementById('tabKb').style.background = 'rgba(255,255,255,0.2)';
+            } else {
+                document.getElementById('requestsTab').classList.add('hidden');
+                document.getElementById('kbTab').classList.remove('hidden');
+                document.getElementById('tabRequests').style.background = 'rgba(255,255,255,0.2)';
+                document.getElementById('tabKb').style.background = 'rgba(255,255,255,0.4)';
+            }
+        }
+
+        // Login
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            systemKey = document.getElementById('systemKey').value;
+
+            document.getElementById('loginBtn').disabled = true;
+            document.getElementById('loginBtn').textContent = 'Logging in...';
+            document.getElementById('loginError').classList.add('hidden');
+
+            try {
+                const res = await fetch(`${API_BASE}/merchant/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    authToken = data.data.accessToken;
+                    sessionStorage.setItem('adminToken', authToken);
+                    sessionStorage.setItem('systemKey', systemKey);
+                    showDashboard();
+                } else {
+                    showLoginError(data.error || 'Login failed');
+                }
+            } catch (err) {
+                showLoginError('Network error. Please try again.');
+            } finally {
+                document.getElementById('loginBtn').disabled = false;
+                document.getElementById('loginBtn').textContent = 'Login';
+            }
+        });
+
+        function showLoginError(msg) {
+            document.getElementById('loginError').textContent = msg;
+            document.getElementById('loginError').classList.remove('hidden');
+        }
+
+        function showDashboard() {
+            document.getElementById('loginView').classList.add('hidden');
+            document.getElementById('dashboardView').classList.remove('hidden');
+            loadRequests();
+        }
+
+        function logout() {
+            sessionStorage.removeItem('adminToken');
+            sessionStorage.removeItem('systemKey');
+            authToken = '';
+            systemKey = '';
+            document.getElementById('loginView').classList.remove('hidden');
+            document.getElementById('dashboardView').classList.add('hidden');
+        }
+
+        // Load Requests
+        async function loadRequests() {
+            try {
+                let endpoint;
+                if (walletType === 'merchant') {
+                    endpoint = `${API_BASE}/admin/wallet/requests?status=pending`;
+                } else if (walletType === 'customer') {
+                    endpoint = `${API_BASE}/admin/wallet/customer-requests?status=pending`;
+                } else {
+                    endpoint = `${API_BASE}/admin/wallet/rider-requests?status=pending`;
+                }
+
+                const res = await fetch(endpoint, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    currentRequests = data.data.requests;
+                    renderRequests();
+                    updateStats();
+                } else {
+                    document.getElementById('requestsContainer').innerHTML =
+                        `<div class="error">${data.error || 'Failed to load requests'}</div>`;
+                }
+            } catch (err) {
+                document.getElementById('requestsContainer').innerHTML =
+                    `<div class="error">Network error. Please refresh.</div>`;
+            }
+        }
+
+        function renderRequests() {
+            const container = document.getElementById('requestsContainer');
+
+            if (currentRequests.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>🎉 All caught up!</h3>
+                        <p>No pending ${walletType} requests to review</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = currentRequests.map(req => {
+                let name, email, label, icon;
+                if (walletType === 'merchant') {
+                    name = req.merchant_name || 'Unknown Merchant';
+                    email = req.merchant_email || '-';
+                    label = 'Merchant';
+                    icon = '🏪';
+                } else if (walletType === 'customer') {
+                    name = req.customer_name || 'Unknown Customer';
+                    email = req.customer_email || '-';
+                    label = 'Customer';
+                    icon = '👤';
+                } else {
+                    name = req.rider_name || 'Unknown Rider';
+                    email = req.rider_email || '-';
+                    label = 'Rider';
+                    icon = '🏍️';
+                }
+
+                return `
+                <div class="request-card" data-id="${req.id}">
+                    <div class="request-header">
+                        <span class="request-id">${icon} Request #${req.id}</span>
+                        <span class="request-status pending">PENDING</span>
+                    </div>
+                    <div class="request-body">
+                        <div class="request-info">
+                            <div class="info-row">
+                                <span class="info-label">${label}</span>
+                                <span class="info-value">${name}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Email</span>
+                                <span class="info-value">${email}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Amount</span>
+                                <span class="info-value amount">₱${parseFloat(req.amount).toLocaleString()}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Method</span>
+                                <span class="info-value">${req.payment_method?.toUpperCase() || '-'}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Reference</span>
+                                <span class="info-value">${req.payment_reference || 'None'}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">Submitted</span>
+                                <span class="info-value">${new Date(req.created_at).toLocaleString()}</span>
+                            </div>
+                        </div>
+                        <img src="/hungr/uploads/${req.proof_image_path}" 
+                             class="proof-image" 
+                             alt="Proof" 
+                             onclick="showImage('/hungr/uploads/${req.proof_image_path}')"
+                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2250%22>📄</text></svg>'">
+                    </div>
+                    <div class="request-actions">
+                        <button class="action-btn reject" onclick="openRejectModal(${req.id}, '${name.replace(/'/g, "\\'")}')">Reject</button>
+                        <button class="action-btn approve" onclick="openApproveModal(${req.id}, '${name.replace(/'/g, "\\'")}', ${req.amount})">Approve</button>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        function updateStats() {
+            document.getElementById('pendingCount').textContent = currentRequests.length;
+            const totalAmount = currentRequests.reduce((sum, r) => sum + parseFloat(r.amount), 0);
+            document.getElementById('totalAmount').textContent = '₱' + totalAmount.toLocaleString();
+        }
+
+        // Modals
+        function openApproveModal(id, merchant, amount) {
+            selectedRequestId = id;
+            document.getElementById('approveAmount').textContent = '₱' + parseFloat(amount).toLocaleString();
+            document.getElementById('approveMerchant').textContent = merchant;
+            document.getElementById('approveNotes').value = '';
+            document.getElementById('approveModal').classList.remove('hidden');
+        }
+
+        function openRejectModal(id, merchant) {
+            selectedRequestId = id;
+            document.getElementById('rejectMerchant').textContent = merchant;
+            document.getElementById('rejectReason').value = '';
+            document.getElementById('rejectModal').classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+            selectedRequestId = null;
+        }
+
+        function showImage(src) {
+            document.getElementById('previewImage').src = src;
+            document.getElementById('imageModal').classList.remove('hidden');
+        }
+
+        // API Actions
+        async function confirmApprove() {
+            const notes = document.getElementById('approveNotes').value;
+            document.getElementById('confirmApproveBtn').disabled = true;
+            document.getElementById('confirmApproveBtn').textContent = 'Processing...';
+
+            try {
+                let endpoint;
+                if (walletType === 'merchant') {
+                    endpoint = `${API_BASE}/admin/wallet/requests/${selectedRequestId}/approve`;
+                } else if (walletType === 'customer') {
+                    endpoint = `${API_BASE}/admin/wallet/customer-requests/${selectedRequestId}/approve`;
+                } else {
+                    endpoint = `${API_BASE}/admin/wallet/rider-requests/${selectedRequestId}/approve`;
+                }
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ systemKey, notes })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    closeModal('approveModal');
+                    loadRequests();
+                    alert('✅ Top-up approved! New balance: ₱' + data.data.newBalance);
+                } else {
+                    alert('Error: ' + (data.error || 'Approval failed'));
+                }
+            } catch (err) {
+                alert('Network error. Please try again.');
+            } finally {
+                document.getElementById('confirmApproveBtn').disabled = false;
+                document.getElementById('confirmApproveBtn').textContent = 'Approve';
+            }
+        }
+
+        async function confirmReject() {
+            const reason = document.getElementById('rejectReason').value;
+            if (!reason) {
+                alert('Please enter a rejection reason');
+                return;
+            }
+
+            document.getElementById('confirmRejectBtn').disabled = true;
+            document.getElementById('confirmRejectBtn').textContent = 'Processing...';
+
+            try {
+                let endpoint;
+                if (walletType === 'merchant') {
+                    endpoint = `${API_BASE}/admin/wallet/requests/${selectedRequestId}/reject`;
+                } else if (walletType === 'customer') {
+                    endpoint = `${API_BASE}/admin/wallet/customer-requests/${selectedRequestId}/reject`;
+                } else {
+                    endpoint = `${API_BASE}/admin/wallet/rider-requests/${selectedRequestId}/reject`;
+                }
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ reason })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    closeModal('rejectModal');
+                    loadRequests();
+                    alert('Request rejected');
+                } else {
+                    alert('Error: ' + (data.error || 'Rejection failed'));
+                }
+            } catch (err) {
+                alert('Network error. Please try again.');
+            } finally {
+                document.getElementById('confirmRejectBtn').disabled = false;
+                document.getElementById('confirmRejectBtn').textContent = 'Reject';
+            }
+        }
+    </script>
+</body>
+
+</html>
