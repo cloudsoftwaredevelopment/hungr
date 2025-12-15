@@ -80,7 +80,7 @@ function AppContent() {
   const fetchRestaurants = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/hungr/api/restaurants');
+      const response = await fetch('/api/restaurants');
       const data = await response.json();
       if (data.success) {
         setRestaurants(data.data);

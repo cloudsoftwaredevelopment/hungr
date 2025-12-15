@@ -571,8 +571,9 @@
             </div>
             <div style="display: flex; gap: 12px;">
                 <button class="logout-btn" onclick="showTab('requests')" id="tabRequests"
-                    style="background: rgba(255,255,255,0.4);">📋 Requests</button>
-                <button class="logout-btn" onclick="showTab('kb')" id="tabKb">📚 Knowledge Base</button>
+                    style="background: rgba(255,255,255,0.4);">📋 Wallet Requests</button>
+                <button class="logout-btn" onclick="showTab('coins')" id="tabCoins">🪙 Coin Requests</button>
+                <button class="logout-btn" onclick="showTab('kb')" id="tabKb">📚 KB</button>
                 <button class="logout-btn" onclick="logout()">Logout</button>
             </div>
         </div>
@@ -612,6 +613,39 @@
 
             <div id="requestsContainer" class="requests">
                 <div class="loading">Loading requests...</div>
+            </div>
+        </div>
+
+        <!-- Coins Tab -->
+        <div id="coinsTab" class="hidden">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <button id="btnMerchantCoin" onclick="switchCoinType('merchant')"
+                    style="flex:1; padding: 12px; border: 2px solid #eab308; background: #eab308; color: white; border-radius: 8px; font-weight: 700; cursor: pointer;">
+                    🏪 Merchant Coins
+                </button>
+                <button id="btnRiderCoin" onclick="switchCoinType('rider')"
+                    style="flex:1; padding: 12px; border: 2px solid #eab308; background: white; color: #eab308; border-radius: 8px; font-weight: 700; cursor: pointer;">
+                    🏍️ Rider Coins
+                </button>
+            </div>
+
+            <div class="stats">
+                <div class="stat-card pending">
+                    <div class="stat-value" id="coinPendingCount">0</div>
+                    <div class="stat-label">Pending Purchase</div>
+                </div>
+                <div class="stat-card approved">
+                    <div class="stat-value" id="coinApprovedCount">0</div>
+                    <div class="stat-label">Approved Today</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">
+                    <div class="stat-value" id="coinTotalAmount" style="color: #b45309;">🪙 0</div>
+                    <div class="stat-label" style="color: #b45309;">Pending Coins</div>
+                </div>
+            </div>
+
+            <div id="coinRequestsContainer" class="requests">
+                <div class="loading">Loading coin requests...</div>
             </div>
         </div>
 
@@ -799,6 +833,165 @@
                     </div>
                 </div>
 
+                <!-- Coins Section Divider -->
+                <div style="margin: 32px 0; padding: 24px 0; border-top: 3px solid #eab308;">
+                    <h2
+                        style="color: #b45309; font-size: 28px; margin: 0; display: flex; align-items: center; gap: 12px;">
+                        🪙 Hungr Coins Guide
+                    </h2>
+                    <p style="color: #78716c; margin-top: 8px;">Everything you need to know about the Hungr Coins reward
+                        system</p>
+                </div>
+
+                <!-- What Are Coins -->
+                <div class="kb-card">
+                    <h2>🪙 What are Hungr Coins?</h2>
+                    <p>Hungr Coins are a <strong>reward currency</strong> that can be given to customers as incentives.
+                        Unlike the wallet (which uses real pesos), coins are:</p>
+                    <ul>
+                        <li><strong>Bought by Merchants & Riders</strong> - They pay pesos to get coins</li>
+                        <li><strong>Awarded to Customers</strong> - As rewards for loyalty, orders, or feedback</li>
+                        <li><strong>Redeemable</strong> - Customers can use coins for discounts</li>
+                    </ul>
+                    <div
+                        style="margin-top: 16px; padding: 12px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #eab308;">
+                        <strong>Key Difference from Wallet:</strong> Wallet = Real money. Coins = Reward points.
+                    </div>
+                </div>
+
+                <!-- How Coins Work -->
+                <div class="kb-card">
+                    <h2>💰 How the Coin System Works</h2>
+                    <div class="step-list">
+                        <div class="step">
+                            <div class="step-num" style="background: #eab308;">1</div>
+                            <div class="step-content">
+                                <h4>Merchants/Riders buy coins from Hungr</h4>
+                                <p>They pay us (via GCash, Maya, or bank), then submit a purchase request with proof of
+                                    payment. Same process as wallet top-up!</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num" style="background: #eab308;">2</div>
+                            <div class="step-content">
+                                <h4>Admin approves the purchase</h4>
+                                <p>You verify the payment arrived, then approve. Their coin balance is credited
+                                    instantly.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num" style="background: #eab308;">3</div>
+                            <div class="step-content">
+                                <h4>They award coins to customers</h4>
+                                <p><strong>Merchants</strong> can award coins to any customer by email (for repeat
+                                    customers, promotions, etc.). <strong>Riders</strong> award coins automatically when
+                                    a customer gives them 5-star feedback.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <div class="step-num" style="background: #eab308;">4</div>
+                            <div class="step-content">
+                                <h4>Customers earn and spend coins</h4>
+                                <p>Customers see their coin balance in the Hungr app. They can also earn coins from the
+                                    system for completing orders, bulk purchases, etc.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coin Earning Rules -->
+                <div class="kb-card">
+                    <h2>📋 Ways Customers Earn Coins</h2>
+                    <p>The system automatically awards coins for these actions (configurable in database):</p>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+                        <tr style="background: #fef3c7;">
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eab308;">Action</th>
+                            <th style="padding: 10px; text-align: center; border-bottom: 2px solid #eab308;">Coins</th>
+                            <th style="padding: 10px; text-align: left; border-bottom: 2px solid #eab308;">Source</th>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">Complete an order</td>
+                            <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e5e5e5;">+10</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">System</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">Bulk order (5+ items)</td>
+                            <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e5e5e5;">+50</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">System</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">First purchase bonus</td>
+                            <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e5e5e5;">+100</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">System</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">Pay with Hungr Wallet</td>
+                            <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e5e5e5;">+5</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">System</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">Advance booking</td>
+                            <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e5e5e5;">+15</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">System</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">5-star delivery rating</td>
+                            <td style="padding: 10px; text-align: center; border-bottom: 1px solid #e5e5e5;">+5</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #e5e5e5;">Rider</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px;">Merchant promotion</td>
+                            <td style="padding: 10px; text-align: center;">Varies</td>
+                            <td style="padding: 10px;">Merchant</td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- How to Approve Coins -->
+                <div class="kb-card">
+                    <h2>✅ How to Approve Coin Purchase Requests</h2>
+                    <ol class="checklist">
+                        <li>Click the <strong>🪙 Coin Requests</strong> tab at the top</li>
+                        <li>Choose <strong>Merchant Coins</strong> or <strong>Rider Coins</strong> toggle</li>
+                        <li>Check our bank/GCash for the incoming payment</li>
+                        <li>Match the <strong>peso amount</strong> - does it match what they paid?</li>
+                        <li>Verify the <strong>proof screenshot</strong></li>
+                        <li>If valid, click <strong>Approve</strong> - coins are instantly credited!</li>
+                    </ol>
+                    <div style="margin-top: 16px; padding: 12px; background: #fef3c7; border-radius: 8px;">
+                        <strong>Note:</strong> Coin purchases require the System Key, just like wallet approvals.
+                    </div>
+                </div>
+
+                <!-- Coins FAQ -->
+                <div class="kb-card">
+                    <h2>❓ Coins FAQ</h2>
+
+                    <div class="faq-item">
+                        <h4>Q: What's the exchange rate for coins?</h4>
+                        <p>A: The merchant/rider pays in pesos, and admin sets how many coins they get. It's flexible -
+                            you could do ₱1 = 1 coin, or offer bulk discounts.</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Q: Can merchants withdraw coins back to pesos?</h4>
+                        <p>A: No. Once pesos are converted to coins, they can only be awarded to customers. Coins are a
+                            one-way reward currency.</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Q: What happens if a merchant has no coins but tries to award?</h4>
+                        <p>A: The system prevents it. They'll see an "Insufficient coins" error and must buy more first.
+                        </p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Q: Can we add/remove earning rules later?</h4>
+                        <p>A: Yes! The earning rules are stored in the database (coin_earning_rules table) and can be
+                            modified. Just set is_active = FALSE to disable a rule.</p>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -901,16 +1094,33 @@
 
         // Tab switching
         function showTab(tab) {
+            const reqTab = document.getElementById('requestsTab');
+            const coinsTab = document.getElementById('coinsTab');
+            const kbTab = document.getElementById('kbTab');
+            const tabReqBtn = document.getElementById('tabRequests');
+            const tabCoinsBtn = document.getElementById('tabCoins');
+            const tabKbBtn = document.getElementById('tabKb');
+
+            // Hide all tabs
+            reqTab.classList.add('hidden');
+            coinsTab.classList.add('hidden');
+            kbTab.classList.add('hidden');
+
+            // Reset all button styles
+            [tabReqBtn, tabCoinsBtn, tabKbBtn].forEach(btn => {
+                btn.style.background = 'rgba(255,255,255,0.2)';
+            });
+
             if (tab === 'requests') {
-                document.getElementById('requestsTab').classList.remove('hidden');
-                document.getElementById('kbTab').classList.add('hidden');
-                document.getElementById('tabRequests').style.background = 'rgba(255,255,255,0.4)';
-                document.getElementById('tabKb').style.background = 'rgba(255,255,255,0.2)';
+                reqTab.classList.remove('hidden');
+                tabReqBtn.style.background = 'rgba(255,255,255,0.4)';
+            } else if (tab === 'coins') {
+                coinsTab.classList.remove('hidden');
+                tabCoinsBtn.style.background = 'rgba(255,255,255,0.4)';
+                loadCoinRequests();
             } else {
-                document.getElementById('requestsTab').classList.add('hidden');
-                document.getElementById('kbTab').classList.remove('hidden');
-                document.getElementById('tabRequests').style.background = 'rgba(255,255,255,0.2)';
-                document.getElementById('tabKb').style.background = 'rgba(255,255,255,0.4)';
+                kbTab.classList.remove('hidden');
+                tabKbBtn.style.background = 'rgba(255,255,255,0.4)';
             }
         }
 
@@ -1193,6 +1403,173 @@
             } finally {
                 document.getElementById('confirmRejectBtn').disabled = false;
                 document.getElementById('confirmRejectBtn').textContent = 'Reject';
+            }
+        }
+
+        // ==========================================
+        // 🪙 COIN REQUEST FUNCTIONS
+        // ==========================================
+
+        let coinType = 'merchant'; // 'merchant' or 'rider'
+        let coinRequests = [];
+        let selectedCoinRequestId = null;
+
+        function switchCoinType(type) {
+            coinType = type;
+            const btnMerchant = document.getElementById('btnMerchantCoin');
+            const btnRider = document.getElementById('btnRiderCoin');
+            const subtitle = document.getElementById('headerSubtitle');
+
+            [btnMerchant, btnRider].forEach(btn => {
+                btn.style.background = 'white';
+                btn.style.color = '#eab308';
+            });
+
+            if (type === 'merchant') {
+                btnMerchant.style.background = '#eab308';
+                btnMerchant.style.color = 'white';
+                subtitle.textContent = 'Manage merchant coin purchases';
+            } else {
+                btnRider.style.background = '#eab308';
+                btnRider.style.color = 'white';
+                subtitle.textContent = 'Manage rider coin purchases';
+            }
+            loadCoinRequests();
+        }
+
+        async function loadCoinRequests() {
+            try {
+                const endpoint = coinType === 'merchant'
+                    ? `${API_BASE}/admin/coins/merchant-requests?status=pending`
+                    : `${API_BASE}/admin/coins/rider-requests?status=pending`;
+
+                const res = await fetch(endpoint, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    coinRequests = data.requests;
+                    renderCoinRequests();
+                    updateCoinStats();
+                }
+            } catch (err) {
+                console.error('Error loading coin requests:', err);
+            }
+        }
+
+        function renderCoinRequests() {
+            const container = document.getElementById('coinRequestsContainer');
+            if (coinRequests.length === 0) {
+                container.innerHTML = `<div class="empty-state">
+                    <div style="font-size: 48px; margin-bottom: 12px;">🪙</div>
+                    <h3>No Pending Coin Requests</h3>
+                    <p>All ${coinType} coin purchases have been processed</p>
+                </div>`;
+                return;
+            }
+
+            container.innerHTML = coinRequests.map(req => {
+                const name = coinType === 'merchant' ? (req.merchant_name || 'Unknown Merchant') : (req.rider_name || 'Unknown Rider');
+                const email = coinType === 'merchant' ? (req.merchant_email || '-') : (req.rider_email || '-');
+                const icon = coinType === 'merchant' ? '🏪' : '🏍️';
+
+                return `<div class="request-card">
+                    <div class="request-header">
+                        <div class="merchant-info">
+                            <div class="merchant-avatar">${icon}</div>
+                            <div>
+                                <div class="merchant-name">${name}</div>
+                                <div class="merchant-email">${email}</div>
+                            </div>
+                        </div>
+                        <div class="request-amount" style="color: #b45309;">🪙 ${parseInt(req.amount).toLocaleString()}</div>
+                    </div>
+                    <div class="request-details">
+                        <div class="detail-row"><span class="detail-label">Peso Amount:</span><span>₱${parseFloat(req.peso_amount).toFixed(2)}</span></div>
+                        <div class="detail-row"><span class="detail-label">Payment:</span><span class="payment-badge">${req.payment_method.toUpperCase()}</span></div>
+                        ${req.payment_reference ? `<div class="detail-row"><span class="detail-label">Reference:</span><span>${req.payment_reference}</span></div>` : ''}
+                        <div class="detail-row"><span class="detail-label">Requested:</span><span>${new Date(req.created_at).toLocaleString()}</span></div>
+                    </div>
+                    ${req.proof_image_path ? `<div style="margin-top: 12px;"><a href="/hungr/${req.proof_image_path}" target="_blank" style="color: #f97316; font-weight: 600;">📎 View Proof</a></div>` : ''}
+                    <div class="request-actions">
+                        <button class="btn btn-danger" onclick="rejectCoinRequest(${req.id})">Reject</button>
+                        <button class="btn btn-success" onclick="approveCoinRequest(${req.id})">Approve</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function updateCoinStats() {
+            const pending = coinRequests.length;
+            const totalCoins = coinRequests.reduce((sum, r) => sum + parseInt(r.amount), 0);
+
+            document.getElementById('coinPendingCount').textContent = pending;
+            document.getElementById('coinTotalAmount').textContent = '🪙 ' + totalCoins.toLocaleString();
+        }
+
+        async function approveCoinRequest(id) {
+            selectedCoinRequestId = id;
+            const req = coinRequests.find(r => r.id === id);
+            if (!req) return;
+
+            const name = coinType === 'merchant' ? (req.merchant_name || 'Unknown') : (req.rider_name || 'Unknown');
+            if (!confirm(`Approve ${parseInt(req.amount).toLocaleString()} coins for ${name}?`)) return;
+
+            try {
+                const endpoint = coinType === 'merchant'
+                    ? `${API_BASE}/admin/coins/merchant-requests/${id}/approve`
+                    : `${API_BASE}/admin/coins/rider-requests/${id}/approve`;
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ systemKey, notes: 'Approved via admin dashboard' })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ Coin purchase approved!');
+                    loadCoinRequests();
+                } else {
+                    alert('Error: ' + (data.error || 'Approval failed'));
+                }
+            } catch (err) {
+                alert('Network error. Please try again.');
+            }
+        }
+
+        async function rejectCoinRequest(id) {
+            selectedCoinRequestId = id;
+            const reason = prompt('Enter rejection reason:');
+            if (reason === null) return;
+
+            try {
+                const endpoint = coinType === 'merchant'
+                    ? `${API_BASE}/admin/coins/merchant-requests/${id}/reject`
+                    : `${API_BASE}/admin/coins/rider-requests/${id}/reject`;
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({ reason: reason || 'No reason provided' })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('Request rejected');
+                    loadCoinRequests();
+                } else {
+                    alert('Error: ' + (data.error || 'Rejection failed'));
+                }
+            } catch (err) {
+                alert('Network error. Please try again.');
             }
         }
     </script>

@@ -6,8 +6,8 @@ import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    {/* CRITICAL: basename tells React Router we are in a subdirectory */}
-    <BrowserRouter basename="/hungr">
+    {/* basename removed for hungr.food direct domain */}
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </React.StrictMode>,

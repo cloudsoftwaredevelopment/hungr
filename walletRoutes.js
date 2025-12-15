@@ -1327,7 +1327,669 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
         }
     });
 
+    // ==========================================
+    // 🪙 HUNGR COINS API
+    // ==========================================
+
+    // Helper: Calculate coin balance from ledger
+    const getCoinBalance = async (tableName, idField, id) => {
+        const [rows] = await db.execute(`
+            SELECT 
+                COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN entry_type = 'debit' THEN amount ELSE 0 END), 0) AS balance
+            FROM ${tableName} WHERE ${idField} = ?
+        `, [id]);
+        return parseInt(rows[0]?.balance || 0);
+    };
+
+    // ==========================================
+    // MERCHANT COINS
+    // ==========================================
+
+    /**
+     * GET /merchant/coins - Get merchant coin balance and history
+     */
+    apiRouter.get('/merchant/coins', verifyToken, async (req, res) => {
+        try {
+            const merchantId = req.user.merchantId;
+            if (!merchantId) return sendError(res, 403, 'Merchant access required');
+
+            // Ensure coins record exists
+            await db.execute(`INSERT IGNORE INTO merchant_coins (merchant_id) VALUES (?)`, [merchantId]);
+
+            const balance = await getCoinBalance('merchant_coin_ledger', 'merchant_id', merchantId);
+
+            const [transactions] = await db.execute(`
+                SELECT id, entry_type, transaction_type, amount, description, recipient_user_id, created_at
+                FROM merchant_coin_ledger 
+                WHERE merchant_id = ?
+                ORDER BY created_at DESC LIMIT 30
+            `, [merchantId]);
+
+            const [pendingReqs] = await db.execute(`
+                SELECT COUNT(*) as count FROM merchant_coin_topup_requests 
+                WHERE merchant_id = ? AND status = 'pending'
+            `, [merchantId]);
+
+            sendSuccess(res, {
+                balance,
+                transactions,
+                pendingRequests: pendingReqs[0]?.count || 0
+            });
+
+        } catch (err) {
+            console.error('Merchant coins error:', err);
+            sendError(res, 500, 'Failed to fetch coins', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /merchant/coins/topup - Request to buy coins
+     */
+    apiRouter.post('/merchant/coins/topup', verifyToken, async (req, res) => {
+        try {
+            const merchantId = req.user.merchantId;
+            if (!merchantId) return sendError(res, 403, 'Merchant access required');
+
+            const { coinAmount, pesoAmount, paymentMethod, paymentReference, proofImage, idempotencyKey } = req.body;
+
+            if (!coinAmount || coinAmount <= 0) return sendError(res, 400, 'Invalid coin amount');
+            if (!pesoAmount || pesoAmount <= 0) return sendError(res, 400, 'Invalid peso amount');
+            if (!paymentMethod) return sendError(res, 400, 'Payment method required');
+            if (!proofImage) return sendError(res, 400, 'Proof of payment required');
+            if (!idempotencyKey) return sendError(res, 400, 'Idempotency key required');
+
+            // Check duplicate
+            const [existing] = await db.execute(
+                'SELECT id, status FROM merchant_coin_topup_requests WHERE idempotency_key = ?',
+                [idempotencyKey]
+            );
+            if (existing.length > 0) {
+                return sendSuccess(res, { requestId: existing[0].id, status: existing[0].status, message: 'Request already submitted' });
+            }
+
+            // Ensure coins record exists
+            await db.execute(`INSERT IGNORE INTO merchant_coins (merchant_id) VALUES (?)`, [merchantId]);
+
+            // Save proof image
+            let proofPath = null;
+            if (proofImage) {
+                const base64Data = proofImage.replace(/^data:image\/\w+;base64,/, '');
+                const filename = `merchant_coin_${merchantId}_${Date.now()}.png`;
+                const filepath = path.join(proofUploadsDir, filename);
+                fs.writeFileSync(filepath, base64Data, 'base64');
+                proofPath = `wallet-proofs/${filename}`;
+            }
+
+            const [result] = await db.execute(`
+                INSERT INTO merchant_coin_topup_requests 
+                (merchant_id, amount, peso_amount, payment_method, payment_reference, proof_image_path, idempotency_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `, [merchantId, coinAmount, pesoAmount, paymentMethod, paymentReference || null, proofPath, idempotencyKey]);
+
+            console.log(`[Coins] Merchant #${merchantId} requested ${coinAmount} coins for ₱${pesoAmount}`);
+
+            sendSuccess(res, {
+                requestId: result.insertId,
+                status: 'pending',
+                message: 'Coin purchase request submitted. Awaiting admin approval.'
+            });
+
+        } catch (err) {
+            console.error('Merchant coin topup error:', err);
+            sendError(res, 500, 'Failed to submit request', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /merchant/coins/award - Award coins to a customer
+     */
+    apiRouter.post('/merchant/coins/award', verifyToken, async (req, res) => {
+        try {
+            const merchantId = req.user.merchantId;
+            if (!merchantId) return sendError(res, 403, 'Merchant access required');
+
+            const { customerEmail, amount, reason, actionCode } = req.body;
+
+            if (!customerEmail) return sendError(res, 400, 'Customer email required');
+            if (!amount || amount <= 0) return sendError(res, 400, 'Invalid amount');
+
+            // Find customer
+            const [customers] = await db.execute('SELECT id FROM users WHERE email = ?', [customerEmail]);
+            if (customers.length === 0) return sendError(res, 404, 'Customer not found');
+            const customerId = customers[0].id;
+
+            // Check merchant has enough coins
+            const merchantBalance = await getCoinBalance('merchant_coin_ledger', 'merchant_id', merchantId);
+            if (merchantBalance < amount) {
+                return sendError(res, 400, `Insufficient coins. You have ${merchantBalance} coins.`);
+            }
+
+            // Debit merchant
+            const [lastMerchantEntry] = await db.execute(`
+                SELECT entry_hash FROM merchant_coin_ledger WHERE merchant_id = ? ORDER BY id DESC LIMIT 1
+            `, [merchantId]);
+            const merchantPrevHash = lastMerchantEntry[0]?.entry_hash || '0'.repeat(64);
+            const merchantIdempKey = `award_${merchantId}_${customerId}_${Date.now()}`;
+            const merchantNewBalance = merchantBalance - amount;
+            const merchantHashData = `${merchantId}:${amount}:debit:${merchantIdempKey}:${merchantPrevHash}`;
+            const merchantEntryHash = crypto.createHash('sha256').update(merchantHashData).digest('hex');
+
+            await db.execute(`
+                INSERT INTO merchant_coin_ledger 
+                (merchant_id, entry_type, transaction_type, amount, running_balance, recipient_user_id, description, idempotency_key, prev_hash, entry_hash)
+                VALUES (?, 'debit', 'award', ?, ?, ?, ?, ?, ?, ?)
+            `, [merchantId, amount, merchantNewBalance, customerId, reason || 'Coins awarded to customer', merchantIdempKey, merchantPrevHash, merchantEntryHash]);
+
+            // Credit customer
+            const [lastCustomerEntry] = await db.execute(`
+                SELECT entry_hash FROM customer_coin_ledger WHERE user_id = ? ORDER BY id DESC LIMIT 1
+            `, [customerId]);
+            const customerPrevHash = lastCustomerEntry[0]?.entry_hash || '0'.repeat(64);
+            const customerIdempKey = `receive_${merchantId}_${customerId}_${Date.now()}`;
+            const customerBalance = await getCoinBalance('customer_coin_ledger', 'user_id', customerId);
+            const customerNewBalance = customerBalance + amount;
+            const customerHashData = `${customerId}:${amount}:credit:${customerIdempKey}:${customerPrevHash}`;
+            const customerEntryHash = crypto.createHash('sha256').update(customerHashData).digest('hex');
+
+            await db.execute(`
+                INSERT INTO customer_coin_ledger 
+                (user_id, entry_type, transaction_type, amount, running_balance, source_type, source_id, description, idempotency_key, prev_hash, entry_hash)
+                VALUES (?, 'credit', 'award', ?, ?, 'merchant', ?, ?, ?, ?, ?)
+            `, [customerId, amount, customerNewBalance, merchantId, reason || 'Coins from merchant', customerIdempKey, customerPrevHash, customerEntryHash]);
+
+            // Record transfer
+            await db.execute(`
+                INSERT INTO coin_transfers (from_type, from_id, to_user_id, amount, reason, action_code)
+                VALUES ('merchant', ?, ?, ?, ?, ?)
+            `, [merchantId, customerId, amount, reason, actionCode || null]);
+
+            console.log(`[Coins] Merchant #${merchantId} awarded ${amount} coins to user #${customerId}`);
+
+            sendSuccess(res, {
+                message: `Successfully awarded ${amount} coins to ${customerEmail}`,
+                merchantBalance: merchantNewBalance,
+                customerBalance: customerNewBalance
+            });
+
+        } catch (err) {
+            console.error('Merchant coin award error:', err);
+            sendError(res, 500, 'Failed to award coins', 'DB_ERROR', err);
+        }
+    });
+
+    // ==========================================
+    // RIDER COINS
+    // ==========================================
+
+    /**
+     * GET /rider/coins - Get rider coin balance and history
+     */
+    apiRouter.get('/rider/coins', verifyToken, async (req, res) => {
+        try {
+            const riderId = req.user.riderId || req.user.id;
+
+            await db.execute(`INSERT IGNORE INTO rider_coins (rider_id) VALUES (?)`, [riderId]);
+
+            const balance = await getCoinBalance('rider_coin_ledger', 'rider_id', riderId);
+
+            const [transactions] = await db.execute(`
+                SELECT id, entry_type, transaction_type, amount, description, recipient_user_id, created_at
+                FROM rider_coin_ledger 
+                WHERE rider_id = ?
+                ORDER BY created_at DESC LIMIT 30
+            `, [riderId]);
+
+            const [pendingReqs] = await db.execute(`
+                SELECT COUNT(*) as count FROM rider_coin_topup_requests 
+                WHERE rider_id = ? AND status = 'pending'
+            `, [riderId]);
+
+            sendSuccess(res, {
+                balance,
+                transactions,
+                pendingRequests: pendingReqs[0]?.count || 0
+            });
+
+        } catch (err) {
+            console.error('Rider coins error:', err);
+            sendError(res, 500, 'Failed to fetch coins', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /rider/coins/topup - Request to buy coins
+     */
+    apiRouter.post('/rider/coins/topup', verifyToken, async (req, res) => {
+        try {
+            const riderId = req.user.riderId || req.user.id;
+            const { coinAmount, pesoAmount, paymentMethod, paymentReference, proofImage, idempotencyKey } = req.body;
+
+            if (!coinAmount || coinAmount <= 0) return sendError(res, 400, 'Invalid coin amount');
+            if (!pesoAmount || pesoAmount <= 0) return sendError(res, 400, 'Invalid peso amount');
+            if (!paymentMethod) return sendError(res, 400, 'Payment method required');
+            if (!proofImage) return sendError(res, 400, 'Proof of payment required');
+            if (!idempotencyKey) return sendError(res, 400, 'Idempotency key required');
+
+            const [existing] = await db.execute(
+                'SELECT id, status FROM rider_coin_topup_requests WHERE idempotency_key = ?',
+                [idempotencyKey]
+            );
+            if (existing.length > 0) {
+                return sendSuccess(res, { requestId: existing[0].id, status: existing[0].status, message: 'Request already submitted' });
+            }
+
+            await db.execute(`INSERT IGNORE INTO rider_coins (rider_id) VALUES (?)`, [riderId]);
+
+            let proofPath = null;
+            if (proofImage) {
+                const base64Data = proofImage.replace(/^data:image\/\w+;base64,/, '');
+                const filename = `rider_coin_${riderId}_${Date.now()}.png`;
+                const filepath = path.join(proofUploadsDir, filename);
+                fs.writeFileSync(filepath, base64Data, 'base64');
+                proofPath = `wallet-proofs/${filename}`;
+            }
+
+            const [result] = await db.execute(`
+                INSERT INTO rider_coin_topup_requests 
+                (rider_id, amount, peso_amount, payment_method, payment_reference, proof_image_path, idempotency_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `, [riderId, coinAmount, pesoAmount, paymentMethod, paymentReference || null, proofPath, idempotencyKey]);
+
+            console.log(`[Coins] Rider #${riderId} requested ${coinAmount} coins for ₱${pesoAmount}`);
+
+            sendSuccess(res, {
+                requestId: result.insertId,
+                status: 'pending',
+                message: 'Coin purchase request submitted. Awaiting admin approval.'
+            });
+
+        } catch (err) {
+            console.error('Rider coin topup error:', err);
+            sendError(res, 500, 'Failed to submit request', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /rider/coins/award - Award coins to customer (e.g., after 5-star feedback)
+     */
+    apiRouter.post('/rider/coins/award', verifyToken, async (req, res) => {
+        try {
+            const riderId = req.user.riderId || req.user.id;
+            const { customerId, amount, reason } = req.body;
+
+            if (!customerId) return sendError(res, 400, 'Customer ID required');
+            if (!amount || amount <= 0) return sendError(res, 400, 'Invalid amount');
+
+            const riderBalance = await getCoinBalance('rider_coin_ledger', 'rider_id', riderId);
+            if (riderBalance < amount) {
+                return sendError(res, 400, `Insufficient coins. You have ${riderBalance} coins.`);
+            }
+
+            // Debit rider
+            const [lastRiderEntry] = await db.execute(`
+                SELECT entry_hash FROM rider_coin_ledger WHERE rider_id = ? ORDER BY id DESC LIMIT 1
+            `, [riderId]);
+            const riderPrevHash = lastRiderEntry[0]?.entry_hash || '0'.repeat(64);
+            const riderIdempKey = `award_${riderId}_${customerId}_${Date.now()}`;
+            const riderNewBalance = riderBalance - amount;
+            const riderHashData = `${riderId}:${amount}:debit:${riderIdempKey}:${riderPrevHash}`;
+            const riderEntryHash = crypto.createHash('sha256').update(riderHashData).digest('hex');
+
+            await db.execute(`
+                INSERT INTO rider_coin_ledger 
+                (rider_id, entry_type, transaction_type, amount, running_balance, recipient_user_id, description, idempotency_key, prev_hash, entry_hash)
+                VALUES (?, 'debit', 'award', ?, ?, ?, ?, ?, ?, ?)
+            `, [riderId, amount, riderNewBalance, customerId, reason || '5-star feedback reward', riderIdempKey, riderPrevHash, riderEntryHash]);
+
+            // Credit customer
+            const [lastCustomerEntry] = await db.execute(`
+                SELECT entry_hash FROM customer_coin_ledger WHERE user_id = ? ORDER BY id DESC LIMIT 1
+            `, [customerId]);
+            const customerPrevHash = lastCustomerEntry[0]?.entry_hash || '0'.repeat(64);
+            const customerIdempKey = `receive_rider_${riderId}_${customerId}_${Date.now()}`;
+            const customerBalance = await getCoinBalance('customer_coin_ledger', 'user_id', customerId);
+            const customerNewBalance = customerBalance + amount;
+            const customerHashData = `${customerId}:${amount}:credit:${customerIdempKey}:${customerPrevHash}`;
+            const customerEntryHash = crypto.createHash('sha256').update(customerHashData).digest('hex');
+
+            await db.execute(`
+                INSERT INTO customer_coin_ledger 
+                (user_id, entry_type, transaction_type, amount, running_balance, source_type, source_id, description, idempotency_key, prev_hash, entry_hash)
+                VALUES (?, 'credit', 'award', ?, ?, 'rider', ?, ?, ?, ?, ?)
+            `, [customerId, amount, customerNewBalance, riderId, reason || '5-star feedback reward', customerIdempKey, customerPrevHash, customerEntryHash]);
+
+            // Record transfer
+            await db.execute(`
+                INSERT INTO coin_transfers (from_type, from_id, to_user_id, amount, reason, action_code)
+                VALUES ('rider', ?, ?, ?, ?, 'five_star_feedback')
+            `, [riderId, customerId, amount, reason]);
+
+            console.log(`[Coins] Rider #${riderId} awarded ${amount} coins to user #${customerId}`);
+
+            sendSuccess(res, {
+                message: `Successfully awarded ${amount} coins`,
+                riderBalance: riderNewBalance
+            });
+
+        } catch (err) {
+            console.error('Rider coin award error:', err);
+            sendError(res, 500, 'Failed to award coins', 'DB_ERROR', err);
+        }
+    });
+
+    // ==========================================
+    // CUSTOMER COINS (Enhanced)
+    // ==========================================
+
+    /**
+     * GET /coins - Get customer coin balance and history (enhanced)
+     */
+    apiRouter.get('/coins', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+
+            const balance = await getCoinBalance('customer_coin_ledger', 'user_id', userId);
+
+            const [transactions] = await db.execute(`
+                SELECT id, entry_type, transaction_type, amount, source_type, description, created_at
+                FROM customer_coin_ledger 
+                WHERE user_id = ?
+                ORDER BY created_at DESC LIMIT 30
+            `, [userId]);
+
+            // Get earning rules for display
+            const [rules] = await db.execute(`
+                SELECT action_code, description, coin_amount, source_type 
+                FROM coin_earning_rules 
+                WHERE is_active = TRUE
+                ORDER BY coin_amount DESC
+            `);
+
+            sendSuccess(res, {
+                balance,
+                transactions,
+                earningRules: rules
+            });
+
+        } catch (err) {
+            console.error('Customer coins error:', err);
+            sendError(res, 500, 'Failed to fetch coins', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /coins/earn - System-triggered coin earning
+     */
+    apiRouter.post('/coins/earn', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const { actionCode, orderId } = req.body;
+
+            if (!actionCode) return sendError(res, 400, 'Action code required');
+
+            // Get earning rule
+            const [rules] = await db.execute(
+                'SELECT * FROM coin_earning_rules WHERE action_code = ? AND is_active = TRUE',
+                [actionCode]
+            );
+            if (rules.length === 0) {
+                return sendError(res, 400, 'Invalid or inactive action code');
+            }
+
+            const rule = rules[0];
+            const amount = rule.coin_amount;
+            const idempotencyKey = `earn_${userId}_${actionCode}_${orderId || Date.now()}`;
+
+            // Check if already earned for this action
+            const [existing] = await db.execute(
+                'SELECT id FROM customer_coin_ledger WHERE idempotency_key = ?',
+                [idempotencyKey]
+            );
+            if (existing.length > 0) {
+                return sendSuccess(res, { message: 'Coins already earned for this action', alreadyEarned: true });
+            }
+
+            // Credit customer
+            const [lastEntry] = await db.execute(`
+                SELECT entry_hash FROM customer_coin_ledger WHERE user_id = ? ORDER BY id DESC LIMIT 1
+            `, [userId]);
+            const prevHash = lastEntry[0]?.entry_hash || '0'.repeat(64);
+            const currentBalance = await getCoinBalance('customer_coin_ledger', 'user_id', userId);
+            const newBalance = currentBalance + amount;
+            const hashData = `${userId}:${amount}:credit:${idempotencyKey}:${prevHash}`;
+            const entryHash = crypto.createHash('sha256').update(hashData).digest('hex');
+
+            await db.execute(`
+                INSERT INTO customer_coin_ledger 
+                (user_id, entry_type, transaction_type, amount, running_balance, source_type, reference_id, description, idempotency_key, prev_hash, entry_hash)
+                VALUES (?, 'credit', 'earn', ?, ?, 'system', ?, ?, ?, ?, ?)
+            `, [userId, amount, newBalance, orderId || null, rule.description, idempotencyKey, prevHash, entryHash]);
+
+            // Record transfer
+            await db.execute(`
+                INSERT INTO coin_transfers (from_type, from_id, to_user_id, amount, reason, action_code, order_id)
+                VALUES ('system', NULL, ?, ?, ?, ?, ?)
+            `, [userId, amount, rule.description, actionCode, orderId || null]);
+
+            console.log(`[Coins] User #${userId} earned ${amount} coins for ${actionCode}`);
+
+            sendSuccess(res, {
+                message: `You earned ${amount} coins!`,
+                amount,
+                newBalance,
+                actionCode
+            });
+
+        } catch (err) {
+            console.error('Coin earn error:', err);
+            sendError(res, 500, 'Failed to earn coins', 'DB_ERROR', err);
+        }
+    });
+
+    // ==========================================
+    // ADMIN COIN APPROVAL ENDPOINTS
+    // ==========================================
+
+    /**
+     * GET /admin/coins/merchant-requests - Get merchant coin purchase requests
+     */
+    apiRouter.get('/admin/coins/merchant-requests', verifyToken, async (req, res) => {
+        try {
+            const status = req.query.status || 'pending';
+            const [requests] = await db.execute(`
+                SELECT r.*, m.business_name as merchant_name, m.email as merchant_email
+                FROM merchant_coin_topup_requests r
+                LEFT JOIN merchants m ON r.merchant_id = m.id
+                WHERE r.status = ?
+                ORDER BY r.created_at ASC
+            `, [status]);
+
+            sendSuccess(res, { requests, type: 'merchant_coins' });
+        } catch (err) {
+            console.error('Admin merchant coin requests error:', err);
+            sendError(res, 500, 'Failed to fetch requests', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * GET /admin/coins/rider-requests - Get rider coin purchase requests
+     */
+    apiRouter.get('/admin/coins/rider-requests', verifyToken, async (req, res) => {
+        try {
+            const status = req.query.status || 'pending';
+            const [requests] = await db.execute(`
+                SELECT r.*, rd.name as rider_name, rd.email as rider_email
+                FROM rider_coin_topup_requests r
+                LEFT JOIN riders rd ON r.rider_id = rd.id
+                WHERE r.status = ?
+                ORDER BY r.created_at ASC
+            `, [status]);
+
+            sendSuccess(res, { requests, type: 'rider_coins' });
+        } catch (err) {
+            console.error('Admin rider coin requests error:', err);
+            sendError(res, 500, 'Failed to fetch requests', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /admin/coins/merchant-requests/:id/approve - Approve merchant coin purchase
+     */
+    apiRouter.post('/admin/coins/merchant-requests/:id/approve', verifyToken, async (req, res) => {
+        try {
+            const requestId = req.params.id;
+            const adminId = req.user.id;
+            const { systemKey, notes } = req.body;
+
+            if (systemKey !== process.env.WALLET_SYSTEM_KEY) {
+                return sendError(res, 403, 'Invalid system key', 'AUTH_ERROR');
+            }
+
+            const [requests] = await db.execute(
+                'SELECT * FROM merchant_coin_topup_requests WHERE id = ? AND status = ?',
+                [requestId, 'pending']
+            );
+            if (requests.length === 0) {
+                return sendError(res, 404, 'Request not found or already processed');
+            }
+
+            const request = requests[0];
+
+            // Get previous hash
+            const [lastEntry] = await db.execute(`
+                SELECT entry_hash FROM merchant_coin_ledger WHERE merchant_id = ? ORDER BY id DESC LIMIT 1
+            `, [request.merchant_id]);
+            const prevHash = lastEntry[0]?.entry_hash || '0'.repeat(64);
+            const idempotencyKey = `topup_coin_${requestId}_${Date.now()}`;
+            const currentBalance = await getCoinBalance('merchant_coin_ledger', 'merchant_id', request.merchant_id);
+            const newBalance = currentBalance + request.amount;
+
+            const hashData = `${request.merchant_id}:${request.amount}:credit:${idempotencyKey}:${prevHash}`;
+            const entryHash = crypto.createHash('sha256').update(hashData).digest('hex');
+
+            await db.execute(`
+                INSERT INTO merchant_coin_ledger 
+                (merchant_id, entry_type, transaction_type, amount, running_balance, reference_id, description, idempotency_key, prev_hash, entry_hash)
+                VALUES (?, 'credit', 'topup', ?, ?, ?, ?, ?, ?, ?)
+            `, [request.merchant_id, request.amount, newBalance, `coin_topup_${requestId}`, `Purchased ${request.amount} coins for ₱${request.peso_amount}`, idempotencyKey, prevHash, entryHash]);
+
+            await db.execute(`
+                UPDATE merchant_coin_topup_requests 
+                SET status = 'approved', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?
+                WHERE id = ?
+            `, [adminId, notes || null, requestId]);
+
+            console.log(`[Coins] Admin approved merchant coin purchase #${requestId}`);
+
+            sendSuccess(res, { message: 'Coin purchase approved', newBalance });
+        } catch (err) {
+            console.error('Merchant coin approval error:', err);
+            sendError(res, 500, 'Failed to approve', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /admin/coins/rider-requests/:id/approve - Approve rider coin purchase
+     */
+    apiRouter.post('/admin/coins/rider-requests/:id/approve', verifyToken, async (req, res) => {
+        try {
+            const requestId = req.params.id;
+            const adminId = req.user.id;
+            const { systemKey, notes } = req.body;
+
+            if (systemKey !== process.env.WALLET_SYSTEM_KEY) {
+                return sendError(res, 403, 'Invalid system key', 'AUTH_ERROR');
+            }
+
+            const [requests] = await db.execute(
+                'SELECT * FROM rider_coin_topup_requests WHERE id = ? AND status = ?',
+                [requestId, 'pending']
+            );
+            if (requests.length === 0) {
+                return sendError(res, 404, 'Request not found or already processed');
+            }
+
+            const request = requests[0];
+
+            const [lastEntry] = await db.execute(`
+                SELECT entry_hash FROM rider_coin_ledger WHERE rider_id = ? ORDER BY id DESC LIMIT 1
+            `, [request.rider_id]);
+            const prevHash = lastEntry[0]?.entry_hash || '0'.repeat(64);
+            const idempotencyKey = `topup_coin_${requestId}_${Date.now()}`;
+            const currentBalance = await getCoinBalance('rider_coin_ledger', 'rider_id', request.rider_id);
+            const newBalance = currentBalance + request.amount;
+
+            const hashData = `${request.rider_id}:${request.amount}:credit:${idempotencyKey}:${prevHash}`;
+            const entryHash = crypto.createHash('sha256').update(hashData).digest('hex');
+
+            await db.execute(`
+                INSERT INTO rider_coin_ledger 
+                (rider_id, entry_type, transaction_type, amount, running_balance, reference_id, description, idempotency_key, prev_hash, entry_hash)
+                VALUES (?, 'credit', 'topup', ?, ?, ?, ?, ?, ?, ?)
+            `, [request.rider_id, request.amount, newBalance, `coin_topup_${requestId}`, `Purchased ${request.amount} coins for ₱${request.peso_amount}`, idempotencyKey, prevHash, entryHash]);
+
+            await db.execute(`
+                UPDATE rider_coin_topup_requests 
+                SET status = 'approved', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?
+                WHERE id = ?
+            `, [adminId, notes || null, requestId]);
+
+            console.log(`[Coins] Admin approved rider coin purchase #${requestId}`);
+
+            sendSuccess(res, { message: 'Coin purchase approved', newBalance });
+        } catch (err) {
+            console.error('Rider coin approval error:', err);
+            sendError(res, 500, 'Failed to approve', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /admin/coins/merchant-requests/:id/reject - Reject merchant coin purchase
+     */
+    apiRouter.post('/admin/coins/merchant-requests/:id/reject', verifyToken, async (req, res) => {
+        try {
+            const requestId = req.params.id;
+            const adminId = req.user.id;
+            const { reason } = req.body;
+
+            await db.execute(`
+                UPDATE merchant_coin_topup_requests 
+                SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), rejection_reason = ?
+                WHERE id = ? AND status = 'pending'
+            `, [adminId, reason || 'No reason provided', requestId]);
+
+            sendSuccess(res, { message: 'Request rejected' });
+        } catch (err) {
+            console.error('Merchant coin rejection error:', err);
+            sendError(res, 500, 'Failed to reject', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /admin/coins/rider-requests/:id/reject - Reject rider coin purchase
+     */
+    apiRouter.post('/admin/coins/rider-requests/:id/reject', verifyToken, async (req, res) => {
+        try {
+            const requestId = req.params.id;
+            const adminId = req.user.id;
+            const { reason } = req.body;
+
+            await db.execute(`
+                UPDATE rider_coin_topup_requests 
+                SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), rejection_reason = ?
+                WHERE id = ? AND status = 'pending'
+            `, [adminId, reason || 'No reason provided', requestId]);
+
+            sendSuccess(res, { message: 'Request rejected' });
+        } catch (err) {
+            console.error('Rider coin rejection error:', err);
+            sendError(res, 500, 'Failed to reject', 'DB_ERROR', err);
+        }
+    });
+
     console.log('💰 Merchant Wallet API routes registered');
     console.log('👤 Customer Wallet API routes registered');
     console.log('🏍️ Rider Wallet API routes registered');
+    console.log('🪙 Hungr Coins API routes registered');
 }

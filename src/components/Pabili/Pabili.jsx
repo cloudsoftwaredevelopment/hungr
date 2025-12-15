@@ -33,11 +33,11 @@ export default function Pabili() {
   const fetchStores = async (query = '', cat = 'All') => {
     setLoading(true);
     try {
-      let url = `/hungr/api/pabili/stores?category=${cat}`;
+      let url = `/api/pabili/stores?category=${cat}`;
 
       if (query.length > 2) {
         const loc = userLocation ? `&lat=${userLocation.lat}&long=${userLocation.long}` : '';
-        url = `/hungr/api/pabili/search?q=${query}${loc}`;
+        url = `/api/pabili/search?q=${query}${loc}`;
       }
 
       const res = await fetch(url);

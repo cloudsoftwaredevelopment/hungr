@@ -18,7 +18,7 @@ export default function StoresView({ addToCart }) {
     setLoading(true);
     try {
       // Fetching from pabili/stores for now as it returns the stores table content
-      const response = await fetch('/hungr/api/pabili/stores');
+      const response = await fetch('/api/pabili/stores');
       const data = await response.json();
       if (data.success) setStores(data.data);
     } catch (e) { console.error(e); }

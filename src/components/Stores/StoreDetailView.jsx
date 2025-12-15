@@ -18,14 +18,14 @@ export default function StoreDetailView({ addToCart }) {
         try {
             // 1. Fetch Store Info
             // Note: In a real optimized app we might pass this via state, but fetching ensures freshness
-            const storeRes = await fetch(`/hungr/api/pabili/stores`);
+            const storeRes = await fetch(`/api/pabili/stores`);
             const storeData = await storeRes.json();
             // Mock finding the specific store from the list for now if single endpoint doesn't exist
             const foundStore = storeData.data.find(s => s.id == id);
             setStore(foundStore);
 
             // 2. Fetch Products
-            const prodRes = await fetch(`/hungr/api/stores/${id}/products`);
+            const prodRes = await fetch(`/api/stores/${id}/products`);
             const prodData = await prodRes.json();
             if (prodData.success) {
                 setProducts(prodData.data);

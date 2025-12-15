@@ -22,7 +22,7 @@ export default function RestaurantView({ addToCart }) {
 
             if (isClosed && token) {
                 try {
-                    await fetch(`/hungr/api/restaurants/${id}/watch`, {
+                    await fetch(`/api/restaurants/${id}/watch`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -41,7 +41,7 @@ export default function RestaurantView({ addToCart }) {
     const fetchMenu = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`/hungr/api/restaurants/${id}/menu`);
+            const res = await fetch(`/api/restaurants/${id}/menu`);
             const result = await res.json();
             if (result.success) {
                 setData(result.data);

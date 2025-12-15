@@ -52,7 +52,7 @@ const HomeView = ({ restaurants, loading, setView, setActiveRestaurant }) => {
   useEffect(() => {
     const fetchPremiumRestaurants = async () => {
       try {
-        const response = await fetch('/hungr/api/restaurants/premium');
+        const response = await fetch('/api/restaurants/premium');
         const data = await response.json();
         if (data.success && data.data.length > 0) {
           // Add gradient to each premium banner

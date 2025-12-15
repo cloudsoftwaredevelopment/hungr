@@ -15,7 +15,7 @@ export default function Login() {
     setError(null);
 
     try {
-      const res = await fetch('https://nfcrevolution.com/hungr/api/auth/login', {
+      const res = await fetch('https://nfcrevolution.com/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
