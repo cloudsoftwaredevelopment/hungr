@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Star, Clock, MapPin, ShoppingBag, Plus } from 'lucide-react';
 
@@ -8,6 +8,8 @@ export default function RestaurantView({ addToCart }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeCategory, setActiveCategory] = useState('All');
+    const [flyingItems, setFlyingItems] = useState([]);
+    const cartRef = useRef(null);
 
     useEffect(() => {
         fetchMenu();
@@ -53,16 +55,40 @@ export default function RestaurantView({ addToCart }) {
         }
     };
 
-    const handleAdd = (item) => {
+    const handleAdd = (item, event) => {
         if (addToCart && data) {
             const cartItem = {
                 ...item,
                 restaurantId: data.restaurant.id,
                 restaurantName: data.restaurant.name
             };
+
+            // Get button position for animation
+            const button = event.currentTarget;
+            const buttonRect = button.getBoundingClientRect();
+            const cartRect = cartRef.current?.getBoundingClientRect();
+
+            if (cartRect) {
+                // Create flying item
+                const flyId = Date.now();
+                const flyingItem = {
+                    id: flyId,
+                    image: item.image_url || 'https://nfcrevolution.com/hungr/registration/image_0.png',
+                    startX: buttonRect.left + buttonRect.width / 2,
+                    startY: buttonRect.top + buttonRect.height / 2,
+                    endX: cartRect.left + cartRect.width / 2,
+                    endY: cartRect.top + cartRect.height / 2,
+                };
+
+                setFlyingItems(prev => [...prev, flyingItem]);
+
+                // Remove flying item after animation
+                setTimeout(() => {
+                    setFlyingItems(prev => prev.filter(f => f.id !== flyId));
+                }, 600);
+            }
+
             addToCart(cartItem);
-            // Optional: Feedback (toast or alert, keeping it simple for now as requested)
-            // alert("Added to cart"); 
         }
     };
 
@@ -79,6 +105,54 @@ export default function RestaurantView({ addToCart }) {
 
     return (
         <div className="min-h-screen bg-gray-50 pb-20">
+
+            {/* Flying Items Animation */}
+            {flyingItems.map(item => (
+                <div
+                    key={item.id}
+                    className="fixed pointer-events-none z-[100]"
+                    style={{
+                        left: item.startX,
+                        top: item.startY,
+                        transform: 'translate(-50%, -50%)',
+                        animation: 'flyToCart 0.6s ease-in-out forwards',
+                        '--fly-end-x': `${item.endX - item.startX}px`,
+                        '--fly-end-y': `${item.endY - item.startY}px`,
+                    }}
+                >
+                    <div className="w-12 h-12 rounded-full bg-orange-500 shadow-lg flex items-center justify-center overflow-hidden border-2 border-white">
+                        <img src={item.image} alt="" className="w-full h-full object-cover" />
+                    </div>
+                </div>
+            ))}
+
+            {/* Animation Styles */}
+            <style>{`
+                @keyframes flyToCart {
+                    0% {
+                        opacity: 1;
+                        transform: translate(-50%, -50%) scale(1);
+                    }
+                    50% {
+                        opacity: 1;
+                        transform: translate(
+                            calc(-50% + var(--fly-end-x) / 2),
+                            calc(-50% + var(--fly-end-y) / 2 - 60px)
+                        ) scale(0.8);
+                    }
+                    100% {
+                        opacity: 0;
+                        transform: translate(
+                            calc(-50% + var(--fly-end-x)),
+                            calc(-50% + var(--fly-end-y))
+                        ) scale(0.3);
+                    }
+                }
+                @keyframes cartBounce {
+                    0%, 100% { transform: scale(1); }
+                    50% { transform: scale(1.2); }
+                }
+            `}</style>
 
             {/* HEADER IMAGE */}
             <div className="relative h-48 bg-gray-300">
@@ -171,7 +245,7 @@ export default function RestaurantView({ addToCart }) {
                                 </div>
                             )}
                             {/* Placeholder for menu item images if missing */}
-                            <img src={item.image_url || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"} className="w-full h-full object-cover" alt={item.name} />
+                            <img src={item.image_url ? `${item.image_url}?v=2` : "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"} className="w-full h-full object-cover" alt={item.name} />
                         </div>
                         <div className="flex-1 flex flex-col justify-between">
                             <div>
@@ -190,9 +264,9 @@ export default function RestaurantView({ addToCart }) {
                                     )}
                                 </div>
                                 <button
-                                    onClick={() => !isClosed && handleAdd(item)}
+                                    onClick={(e) => !isClosed && handleAdd(item, e)}
                                     disabled={isClosed}
-                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition ${isClosed ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-600 hover:bg-orange-600 hover:text-white'}`}>
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isClosed ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-600 hover:bg-orange-600 hover:text-white active:scale-90'}`}>
                                     <Plus size={18} />
                                 </button>
                             </div>
@@ -202,10 +276,11 @@ export default function RestaurantView({ addToCart }) {
             </div>
 
             {/* Floating Cart Button */}
-            <div className="fixed bottom-24 right-4 z-40">
+            <div className="fixed bottom-24 right-4 z-40" ref={cartRef}>
                 <button
                     onClick={() => navigate('/cart')}
                     className="bg-orange-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition active:scale-95 flex items-center justify-center"
+                    style={flyingItems.length > 0 ? { animation: 'cartBounce 0.3s ease-in-out' } : {}}
                 >
                     <ShoppingBag size={24} />
                 </button>
@@ -214,3 +289,4 @@ export default function RestaurantView({ addToCart }) {
         </div>
     );
 }
+

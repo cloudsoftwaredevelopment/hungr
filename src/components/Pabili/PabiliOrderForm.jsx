@@ -36,7 +36,7 @@ const PabiliOrderForm = ({ store, onCancel }) => {
         setLoading(true);
         try {
             const token = sessionStorage.getItem('accessToken');
-            const res = await fetch(`https://nfcrevolution.com/api/pabili/orders`, {
+            const res = await fetch(`/api/pabili/orders`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
