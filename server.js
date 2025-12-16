@@ -525,6 +525,55 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
     return R * c;
 };
 
+// Get customer order history
+app.get('/api/orders/history', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Get food orders from 'orders' table
+        const [foodOrders] = await db.execute(`
+            SELECT 
+                o.id,
+                o.total_amount as amount,
+                o.status,
+                o.created_at,
+                r.name as merchant_name,
+                'food' as type
+            FROM orders o
+            LEFT JOIN restaurants r ON o.restaurant_id = r.id
+            WHERE o.user_id = ?
+            ORDER BY o.created_at DESC
+            LIMIT 50
+        `, [userId]);
+
+        // Get store orders from 'store_paid_orders' table
+        const [storeOrders] = await db.execute(`
+            SELECT 
+                o.id,
+                o.total_amount as amount,
+                o.status,
+                o.created_at,
+                s.name as merchant_name,
+                'store' as type
+            FROM store_paid_orders o
+            LEFT JOIN stores s ON o.store_id = s.id
+            WHERE o.user_id = ?
+            ORDER BY o.created_at DESC
+            LIMIT 50
+        `, [userId]);
+
+        // Combine and sort by date (newest first)
+        const allOrders = [...foodOrders, ...storeOrders]
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, 50);
+
+        sendSuccess(res, allOrders);
+    } catch (err) {
+        console.error('Order history error:', err);
+        sendError(res, 500, 'Failed to fetch order history');
+    }
+});
+
 app.post('/api/orders', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -946,8 +995,8 @@ app.post('/api/riders/:id/orders/:orderId/accept', verifyToken, async (req, res)
             restaurantAddress = check[0].address || '';
             dispatchCode = check[0].dispatch_code;
 
-            // Update order with rider assignment (use 'delivering' status which is in the ENUM)
-            await db.execute('UPDATE orders SET rider_id = ?, status = ? WHERE id = ?', [riderId, 'delivering', orderId]);
+            // Update order with rider assignment - keep status as 'preparing', only assign rider
+            await db.execute('UPDATE orders SET rider_id = ? WHERE id = ?', [riderId, orderId]);
         } else {
             // Handle store order
             const [check] = await db.execute('SELECT o.id, o.store_id, s.name, s.latitude, s.longitude, s.address FROM store_paid_orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ? AND o.rider_id IS NULL', [orderId]);
@@ -1035,25 +1084,84 @@ app.get('/api/riders/:id/wallet', verifyToken, async (req, res) => {
     }
 });
 
+// 5b. Mark Delivery as Complete
+app.post('/api/riders/:id/orders/:orderId/complete', verifyToken, async (req, res) => {
+    try {
+        const { id: riderId, orderId } = req.params;
+        const { orderType } = req.body; // 'food' or 'store'
+
+        if (orderType === 'food' || !orderType) {
+            // Update food order to completed
+            const [result] = await db.execute(
+                'UPDATE orders SET status = ?, completed_at = NOW() WHERE id = ? AND rider_id = ?',
+                ['delivered', orderId, riderId]
+            );
+
+            if (result.affectedRows === 0) {
+                return sendError(res, 404, 'Order not found or not assigned to you');
+            }
+
+            // Notify customer via Socket.IO
+            const [orderRows] = await db.execute('SELECT user_id FROM orders WHERE id = ?', [orderId]);
+            if (orderRows.length > 0) {
+                io.emit('order_completed', {
+                    orderId,
+                    userId: orderRows[0].user_id,
+                    message: 'Your order has been delivered!'
+                });
+            }
+        } else {
+            // Update store order to completed
+            const [result] = await db.execute(
+                'UPDATE store_paid_orders SET status = ?, completed_at = NOW() WHERE id = ? AND rider_id = ?',
+                ['delivered', orderId, riderId]
+            );
+
+            if (result.affectedRows === 0) {
+                return sendError(res, 404, 'Order not found or not assigned to you');
+            }
+        }
+
+        console.log(`[Order #${orderId}] Delivery completed by Rider #${riderId}`);
+        sendSuccess(res, { orderId, status: 'completed' }, 'Delivery marked as complete');
+    } catch (err) {
+        console.error('Complete delivery error:', err);
+        sendError(res, 500, 'Failed to complete delivery');
+    }
+});
+
 // 6. Get Rider Earnings History
 app.get('/api/riders/:id/earnings', verifyToken, async (req, res) => {
     try {
         const riderId = req.params.id;
 
-        // Fetch completed orders assigned to this rider
+        // Fetch completed/cancelled orders assigned to this rider (both food and store orders)
+        // Excludes 'delivering' status as those are still active
         const [completedOrders] = await db.execute(`
-            SELECT 
+            (SELECT 
                 o.id,
                 o.total_amount,
                 o.created_at,
                 o.status,
-                s.name as store_name
+                r.name as store_name,
+                'food' as order_type
+            FROM orders o
+            LEFT JOIN restaurants r ON o.restaurant_id = r.id
+            WHERE o.rider_id = ? AND o.status IN ('completed', 'delivered', 'cancelled'))
+            UNION ALL
+            (SELECT 
+                o.id,
+                o.total_amount,
+                o.created_at,
+                o.status,
+                s.name as store_name,
+                'store' as order_type
             FROM store_paid_orders o
             LEFT JOIN stores s ON o.store_id = s.id
-            WHERE o.rider_id = ? AND o.status IN ('completed', 'delivered', 'assigned')
-            ORDER BY o.created_at DESC
+            WHERE o.rider_id = ? AND o.status IN ('completed', 'delivered', 'cancelled'))
+            ORDER BY created_at DESC
             LIMIT 50
-        `, [riderId]);
+        `, [riderId, riderId]);
 
         // Calculate earnings summary
         const today = new Date();
@@ -1729,7 +1837,12 @@ apiRouter.post('/merchant/orders/:id/release', verifyToken, async (req, res) => 
         };
 
         if (effectiveRiderId) {
-            io.to(`rider_${effectiveRiderId}`).emit('order_released', deliveryData);
+            const targetRoom = `rider_${effectiveRiderId}`;
+            const roomSockets = io.sockets.adapter.rooms.get(targetRoom);
+            const socketsInRoom = roomSockets ? roomSockets.size : 0;
+            console.log(`[Order #${orderId}] Emitting order_released to room '${targetRoom}'. Sockets in room: ${socketsInRoom}`);
+            console.log(`[Order #${orderId}] Active riders map:`, [...activeRiders.entries()]);
+            io.to(targetRoom).emit('order_released', deliveryData);
             console.log(`[Order #${orderId}] Released. Rider #${effectiveRiderId} notified via room.`);
         } else {
             // Fallback: broadcast to all clients (rider should filter by orderId)
@@ -2064,14 +2177,30 @@ apiRouter.get('/wallet', verifyToken, async (req, res) => {
 apiRouter.get('/coins', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
+
+        // Get coin balance
+        const [balanceRows] = await db.execute('SELECT balance FROM hungr_coins WHERE user_id = ?', [userId]);
+        const balance = balanceRows.length > 0 ? parseFloat(balanceRows[0].balance) : 0;
+
+        // Get coin transaction history
+        let transactions = [];
         try {
-            const [rows] = await db.execute('SELECT balance FROM hungr_coins WHERE user_id = ?', [userId]);
-            const coins = rows.length > 0 ? rows[0].balance : 0;
-            sendSuccess(res, { coins });
+            const [txRows] = await db.execute(`
+                SELECT id, user_id, amount, entry_type, transaction_type, description, reference_id, created_at
+                FROM coin_transactions
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 20
+            `, [userId]);
+            transactions = txRows;
         } catch (e) {
-            sendSuccess(res, { coins: 0 });
+            // Table might not exist yet
+            console.log('coin_transactions table may not exist:', e.message);
         }
+
+        sendSuccess(res, { balance, transactions });
     } catch (err) {
+        console.error('Coins fetch error:', err);
         sendError(res, 500, "DB Error", "DB_ERROR", err);
     }
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ChevronLeft, Loader } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -6,10 +6,11 @@ import { useAuth } from '../../contexts/AuthContext';
 const API_URL = '/api';
 
 const AuthModal = ({ onClose }) => {
-    const { login } = useAuth();
+    const { login, getRememberedCredentials } = useAuth();
     const [view, setView] = useState('login'); // 'login', 'register', 'otp'
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [rememberMe, setRememberMe] = useState(false);
 
     // Form States
     const [formData, setFormData] = useState({
@@ -21,6 +22,15 @@ const AuthModal = ({ onClose }) => {
         otp: ''
     });
 
+    // Load remembered credentials on mount
+    useEffect(() => {
+        const remembered = getRememberedCredentials();
+        if (remembered.email) {
+            setFormData(prev => ({ ...prev, email: remembered.email }));
+            setRememberMe(remembered.rememberMe);
+        }
+    }, []);
+
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
@@ -30,8 +40,8 @@ const AuthModal = ({ onClose }) => {
         setLoading(true);
         setError('');
 
-        // Use context login
-        const res = await login(formData.email, formData.password);
+        // Use context login with rememberMe flag
+        const res = await login(formData.email, formData.password, rememberMe);
 
         if (res.success) {
             onClose();
@@ -131,6 +141,18 @@ const AuthModal = ({ onClose }) => {
                     <form onSubmit={handleLogin} className="space-y-4">
                         <input name="email" type="email" placeholder="Email" value={formData.email} onChange={handleChange} className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 text-sm focus:border-orange-500 outline-none transition-colors text-gray-800" required />
                         <input name="password" type="password" placeholder="Password" value={formData.password} onChange={handleChange} className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 text-sm focus:border-orange-500 outline-none transition-colors text-gray-800" required />
+
+                        {/* Remember Me Checkbox */}
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={rememberMe}
+                                onChange={(e) => setRememberMe(e.target.checked)}
+                                className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                            />
+                            <span className="text-sm text-gray-600">Remember me</span>
+                        </label>
+
                         <button type="submit" disabled={loading} className="w-full bg-orange-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-orange-200 hover:bg-orange-700 transition flex justify-center active:scale-[0.98]">
                             {loading ? <Loader className="animate-spin" size={20} /> : 'Login'}
                         </button>

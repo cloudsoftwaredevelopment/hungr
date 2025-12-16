@@ -1328,6 +1328,170 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
     });
 
     // ==========================================
+    // 👤 RIDER PROFILE API
+    // ==========================================
+
+    /**
+     * GET /rider/profile - Get rider profile data
+     */
+    apiRouter.get('/rider/profile', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+
+            const [riders] = await db.execute(`
+                SELECT id, user_id, name, first_name, last_name, middle_name, 
+                       email, phone, address, profile_photo, biography,
+                       vehicle_type, plate_number, ratings, completed_orders
+                FROM riders WHERE user_id = ?
+            `, [userId]);
+
+            if (riders.length === 0) {
+                return sendError(res, 404, 'Rider profile not found', 'NOT_FOUND');
+            }
+
+            sendSuccess(res, riders[0]);
+
+        } catch (err) {
+            console.error('Get rider profile error:', err);
+            sendError(res, 500, 'Failed to get profile', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * PUT /rider/profile - Update rider profile
+     */
+    apiRouter.put('/rider/profile', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const { first_name, last_name, middle_name, phone, address, biography } = req.body;
+
+            // Validate inputs
+            if (!first_name || !last_name) {
+                return sendError(res, 400, 'First name and last name are required');
+            }
+
+            // Update rider profile
+            const fullName = middle_name
+                ? `${first_name} ${middle_name} ${last_name}`
+                : `${first_name} ${last_name}`;
+
+            await db.execute(`
+                UPDATE riders 
+                SET first_name = ?, last_name = ?, middle_name = ?, 
+                    name = ?, phone = ?, address = ?, biography = ?, updated_at = NOW()
+                WHERE user_id = ?
+            `, [first_name, last_name, middle_name || null, fullName, phone, address, biography, userId]);
+
+            console.log(`[Profile] Rider #${userId} updated profile`);
+
+            sendSuccess(res, { message: 'Profile updated successfully' });
+
+        } catch (err) {
+            console.error('Update rider profile error:', err);
+            sendError(res, 500, 'Failed to update profile', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /rider/profile/photo - Upload rider profile photo
+     */
+    apiRouter.post('/rider/profile/photo', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const { photo } = req.body; // Base64 encoded image
+
+            if (!photo) {
+                return sendError(res, 400, 'Photo is required');
+            }
+
+            // Save photo to uploads folder
+            const photoDir = path.join(process.cwd(), 'uploads', 'rider-photos');
+            if (!fs.existsSync(photoDir)) {
+                fs.mkdirSync(photoDir, { recursive: true });
+            }
+
+            // Extract base64 data
+            const matches = photo.match(/^data:image\/(\w+);base64,(.+)$/);
+            if (!matches) {
+                return sendError(res, 400, 'Invalid image format');
+            }
+
+            const ext = matches[1];
+            const data = matches[2];
+            const filename = `rider-${userId}-${Date.now()}.${ext}`;
+            const filepath = path.join(photoDir, filename);
+
+            fs.writeFileSync(filepath, Buffer.from(data, 'base64'));
+
+            const photoUrl = `/uploads/rider-photos/${filename}`;
+
+            // Update database
+            await db.execute(`
+                UPDATE riders SET profile_photo = ?, updated_at = NOW() WHERE user_id = ?
+            `, [photoUrl, userId]);
+
+            console.log(`[Profile] Rider #${userId} uploaded photo: ${photoUrl}`);
+
+            sendSuccess(res, { photoUrl });
+
+        } catch (err) {
+            console.error('Upload rider photo error:', err);
+            sendError(res, 500, 'Failed to upload photo', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * POST /rider/password/reset - Reset rider password
+     */
+    apiRouter.post('/rider/password/reset', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const { currentPassword, newPassword } = req.body;
+
+            if (!currentPassword || !newPassword) {
+                return sendError(res, 400, 'Current password and new password are required');
+            }
+
+            if (newPassword.length < 6) {
+                return sendError(res, 400, 'New password must be at least 6 characters');
+            }
+
+            // Get user's current password hash
+            const [users] = await db.execute(`
+                SELECT password_hash FROM users WHERE id = ?
+            `, [userId]);
+
+            if (users.length === 0) {
+                return sendError(res, 404, 'User not found', 'NOT_FOUND');
+            }
+
+            // Verify current password (using bcrypt)
+            const bcrypt = await import('bcryptjs');
+            const isValid = await bcrypt.compare(currentPassword, users[0].password_hash);
+
+            if (!isValid) {
+                return sendError(res, 401, 'Current password is incorrect');
+            }
+
+            // Hash new password
+            const newHash = await bcrypt.hash(newPassword, 10);
+
+            // Update password
+            await db.execute(`
+                UPDATE users SET password_hash = ? WHERE id = ?
+            `, [newHash, userId]);
+
+            console.log(`[Profile] Rider #${userId} changed password`);
+
+            sendSuccess(res, { message: 'Password changed successfully' });
+
+        } catch (err) {
+            console.error('Password reset error:', err);
+            sendError(res, 500, 'Failed to reset password', 'DB_ERROR', err);
+        }
+    });
+
+    // ==========================================
     // 🪙 HUNGR COINS API
     // ==========================================
 
