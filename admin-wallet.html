@@ -573,6 +573,9 @@
                 <button class="logout-btn" onclick="showTab('requests')" id="tabRequests"
                     style="background: rgba(255,255,255,0.4);">📋 Wallet Requests</button>
                 <button class="logout-btn" onclick="showTab('coins')" id="tabCoins">🪙 Coin Requests</button>
+                <button class="logout-btn" onclick="showTab('createMerchant')" id="tabCreateMerchant">➕
+                    Merchant</button>
+                <button class="logout-btn" onclick="showTab('createRider')" id="tabCreateRider">🏍️ Rider</button>
                 <button class="logout-btn" onclick="showTab('kb')" id="tabKb">📚 KB</button>
                 <button class="logout-btn" onclick="logout()">Logout</button>
             </div>
@@ -994,254 +997,515 @@
 
             </div>
         </div>
-    </div>
 
-    <!-- Approve Modal -->
-    <div id="approveModal" class="modal-overlay hidden">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>✅ Approve Top-Up</h3>
+        <!-- Create Merchant Tab -->
+        <div id="createMerchantTab" class="hidden">
+            <div class="kb-card" style="max-width: 500px; margin: 0 auto;">
+                <h2>➕ Create New Merchant Account</h2>
+                <p style="color: var(--gray-600); margin-bottom: 24px;">
+                    Create a new merchant account. They will be required to change their password on first login.
+                </p>
+
+                <div class="form-group">
+                    <label>Email Address *</label>
+                    <input type="email" id="newMerchantEmail" placeholder="merchant@example.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Business Name *</label>
+                    <input type="text" id="newMerchantName" placeholder="e.g. Jollibee Iloilo Downtown" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Business Type *</label>
+                    <select id="newMerchantType"
+                        style="width: 100%; padding: 12px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px;">
+                        <option value="restaurant">🍽️ Restaurant (Food Delivery)</option>
+                        <option value="store">🏪 Store (Express/Pabili)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Generated Password *</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="newMerchantPassword" placeholder="Click Generate" required readonly
+                            style="flex: 1; font-family: monospace; font-size: 16px; letter-spacing: 1px;">
+                        <button type="button" onclick="generatePassword()"
+                            style="padding: 12px 20px; background: var(--gray-700); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            🔄 Generate
+                        </button>
+                    </div>
+                    <small style="color: var(--gray-500); margin-top: 4px; display: block;">
+                        This password will be used for their first login only.
+                    </small>
+                </div>
+
+                <button onclick="createMerchantAccount()" id="createMerchantBtn"
+                    style="width: 100%; padding: 16px; background: linear-gradient(135deg, var(--orange), var(--orange-dark)); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 16px;">
+                    ✅ Create Merchant Account
+                </button>
+
+                <div id="createMerchantResult" style="margin-top: 20px;"></div>
             </div>
-            <div class="modal-body">
-                <p>You are about to approve <strong id="approveAmount">₱0</strong> for <strong
-                        id="approveMerchant">Merchant</strong>.</p>
-                <div class="form-group" style="margin-top: 16px;">
-                    <label>Notes (optional)</label>
-                    <input type="text" id="approveNotes" placeholder="e.g. Verified in BDO account">
+        </div>
+
+        <!-- Create Rider Tab -->
+        <div id="createRiderTab" class="hidden">
+            <div class="kb-card" style="max-width: 500px; margin: 0 auto;">
+                <h2>🏍️ Create New Rider Account</h2>
+                <p style="color: var(--gray-600); margin-bottom: 24px;">
+                    Create a new rider account. They will be required to change their password on first login.
+                </p>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input type="text" id="newRiderFirstName" placeholder="Juan" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input type="text" id="newRiderLastName" placeholder="Dela Cruz" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Email Address *</label>
+                    <input type="email" id="newRiderEmail" placeholder="rider@example.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Mobile Number *</label>
+                    <input type="tel" id="newRiderPhone" placeholder="09171234567" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Generated Password *</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="newRiderPassword" placeholder="Click Generate" required readonly
+                            style="flex: 1; font-family: monospace; font-size: 16px; letter-spacing: 1px;">
+                        <button type="button" onclick="generateRiderPassword()"
+                            style="padding: 12px 20px; background: var(--gray-700); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            🔄 Generate
+                        </button>
+                    </div>
+                    <small style="color: var(--gray-500); margin-top: 4px; display: block;">
+                        This password will be used for their first login only.
+                    </small>
+                </div>
+
+                <button onclick="createRiderAccount()" id="createRiderBtn"
+                    style="width: 100%; padding: 16px; background: linear-gradient(135deg, #22c55e, #16a34a); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 16px;">
+                    ✅ Create Rider Account
+                </button>
+
+                <div id="createRiderResult" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+
+        <!-- Approve Modal -->
+        <div id="approveModal" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>✅ Approve Top-Up</h3>
+                </div>
+                <div class="modal-body">
+                    <p>You are about to approve <strong id="approveAmount">₱0</strong> for <strong
+                            id="approveMerchant">Merchant</strong>.</p>
+                    <div class="form-group" style="margin-top: 16px;">
+                        <label>Notes (optional)</label>
+                        <input type="text" id="approveNotes" placeholder="e.g. Verified in BDO account">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn cancel" onclick="closeModal('approveModal')">Cancel</button>
+                    <button class="btn" onclick="confirmApprove()" id="confirmApproveBtn">Approve</button>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button class="btn cancel" onclick="closeModal('approveModal')">Cancel</button>
-                <button class="btn" onclick="confirmApprove()" id="confirmApproveBtn">Approve</button>
-            </div>
         </div>
-    </div>
 
-    <!-- Reject Modal -->
-    <div id="rejectModal" class="modal-overlay hidden">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>❌ Reject Request</h3>
-            </div>
-            <div class="modal-body">
-                <p>You are about to reject the top-up request from <strong id="rejectMerchant">Merchant</strong>.</p>
-                <div class="form-group" style="margin-top: 16px;">
-                    <label>Reason</label>
-                    <input type="text" id="rejectReason" placeholder="e.g. Invalid proof, amount mismatch" required>
+        <!-- Reject Modal -->
+        <div id="rejectModal" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>❌ Reject Request</h3>
+                </div>
+                <div class="modal-body">
+                    <p>You are about to reject the top-up request from <strong id="rejectMerchant">Merchant</strong>.
+                    </p>
+                    <div class="form-group" style="margin-top: 16px;">
+                        <label>Reason</label>
+                        <input type="text" id="rejectReason" placeholder="e.g. Invalid proof, amount mismatch" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn cancel" onclick="closeModal('rejectModal')">Cancel</button>
+                    <button class="btn" style="background: var(--red);" onclick="confirmReject()"
+                        id="confirmRejectBtn">Reject</button>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button class="btn cancel" onclick="closeModal('rejectModal')">Cancel</button>
-                <button class="btn" style="background: var(--red);" onclick="confirmReject()"
-                    id="confirmRejectBtn">Reject</button>
+        </div>
+
+        <!-- Image Preview Modal -->
+        <div id="imageModal" class="modal-overlay hidden" onclick="closeModal('imageModal')">
+            <div class="modal image-modal" style="max-width: 800px;">
+                <img id="previewImage" src="" alt="Proof">
             </div>
         </div>
-    </div>
 
-    <!-- Image Preview Modal -->
-    <div id="imageModal" class="modal-overlay hidden" onclick="closeModal('imageModal')">
-        <div class="modal image-modal" style="max-width: 800px;">
-            <img id="previewImage" src="" alt="Proof">
-        </div>
-    </div>
+        <script>
+            const API_BASE = '/api';
+            let authToken = '';
+            let systemKey = '';
+            let currentRequests = [];
+            let selectedRequestId = null;
+            let walletType = 'merchant'; // 'merchant' or 'customer'
 
-    <script>
-        const API_BASE = '/hungr/api';
-        let authToken = '';
-        let systemKey = '';
-        let currentRequests = [];
-        let selectedRequestId = null;
-        let walletType = 'merchant'; // 'merchant' or 'customer'
+            // Switch between merchant and customer wallets
+            function switchWalletType(type) {
+                walletType = type;
+                const btnMerchant = document.getElementById('btnMerchant');
+                const btnCustomer = document.getElementById('btnCustomer');
+                const btnRider = document.getElementById('btnRider');
+                const subtitle = document.getElementById('headerSubtitle');
 
-        // Switch between merchant and customer wallets
-        function switchWalletType(type) {
-            walletType = type;
-            const btnMerchant = document.getElementById('btnMerchant');
-            const btnCustomer = document.getElementById('btnCustomer');
-            const btnRider = document.getElementById('btnRider');
-            const subtitle = document.getElementById('headerSubtitle');
-
-            // Reset all buttons
-            [btnMerchant, btnCustomer, btnRider].forEach(btn => {
-                btn.style.background = 'white';
-                btn.style.color = '#f97316';
-            });
-
-            if (type === 'merchant') {
-                btnMerchant.style.background = '#f97316';
-                btnMerchant.style.color = 'white';
-                subtitle.textContent = 'Manage merchant top-up requests';
-            } else if (type === 'customer') {
-                btnCustomer.style.background = '#f97316';
-                btnCustomer.style.color = 'white';
-                subtitle.textContent = 'Manage customer top-up requests';
-            } else {
-                btnRider.style.background = '#f97316';
-                btnRider.style.color = 'white';
-                subtitle.textContent = 'Manage rider top-up requests';
-            }
-            loadRequests();
-        }
-
-        // Check if already logged in
-        document.addEventListener('DOMContentLoaded', () => {
-            authToken = sessionStorage.getItem('adminToken');
-            systemKey = sessionStorage.getItem('systemKey');
-            if (authToken && systemKey) {
-                showDashboard();
-            }
-        });
-
-        // Tab switching
-        function showTab(tab) {
-            const reqTab = document.getElementById('requestsTab');
-            const coinsTab = document.getElementById('coinsTab');
-            const kbTab = document.getElementById('kbTab');
-            const tabReqBtn = document.getElementById('tabRequests');
-            const tabCoinsBtn = document.getElementById('tabCoins');
-            const tabKbBtn = document.getElementById('tabKb');
-
-            // Hide all tabs
-            reqTab.classList.add('hidden');
-            coinsTab.classList.add('hidden');
-            kbTab.classList.add('hidden');
-
-            // Reset all button styles
-            [tabReqBtn, tabCoinsBtn, tabKbBtn].forEach(btn => {
-                btn.style.background = 'rgba(255,255,255,0.2)';
-            });
-
-            if (tab === 'requests') {
-                reqTab.classList.remove('hidden');
-                tabReqBtn.style.background = 'rgba(255,255,255,0.4)';
-            } else if (tab === 'coins') {
-                coinsTab.classList.remove('hidden');
-                tabCoinsBtn.style.background = 'rgba(255,255,255,0.4)';
-                loadCoinRequests();
-            } else {
-                kbTab.classList.remove('hidden');
-                tabKbBtn.style.background = 'rgba(255,255,255,0.4)';
-            }
-        }
-
-        // Login
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            systemKey = document.getElementById('systemKey').value;
-
-            document.getElementById('loginBtn').disabled = true;
-            document.getElementById('loginBtn').textContent = 'Logging in...';
-            document.getElementById('loginError').classList.add('hidden');
-
-            try {
-                const res = await fetch(`${API_BASE}/merchant/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                // Reset all buttons
+                [btnMerchant, btnCustomer, btnRider].forEach(btn => {
+                    btn.style.background = 'white';
+                    btn.style.color = '#f97316';
                 });
-                const data = await res.json();
 
-                if (data.success) {
-                    authToken = data.data.accessToken;
-                    sessionStorage.setItem('adminToken', authToken);
-                    sessionStorage.setItem('systemKey', systemKey);
+                if (type === 'merchant') {
+                    btnMerchant.style.background = '#f97316';
+                    btnMerchant.style.color = 'white';
+                    subtitle.textContent = 'Manage merchant top-up requests';
+                } else if (type === 'customer') {
+                    btnCustomer.style.background = '#f97316';
+                    btnCustomer.style.color = 'white';
+                    subtitle.textContent = 'Manage customer top-up requests';
+                } else {
+                    btnRider.style.background = '#f97316';
+                    btnRider.style.color = 'white';
+                    subtitle.textContent = 'Manage rider top-up requests';
+                }
+                loadRequests();
+            }
+
+            // Check if already logged in
+            document.addEventListener('DOMContentLoaded', () => {
+                authToken = sessionStorage.getItem('adminToken');
+                systemKey = sessionStorage.getItem('systemKey');
+                if (authToken && systemKey) {
                     showDashboard();
-                } else {
-                    showLoginError(data.error || 'Login failed');
                 }
-            } catch (err) {
-                showLoginError('Network error. Please try again.');
-            } finally {
-                document.getElementById('loginBtn').disabled = false;
-                document.getElementById('loginBtn').textContent = 'Login';
-            }
-        });
+            });
 
-        function showLoginError(msg) {
-            document.getElementById('loginError').textContent = msg;
-            document.getElementById('loginError').classList.remove('hidden');
-        }
+            // Tab switching
+            function showTab(tab) {
+                const reqTab = document.getElementById('requestsTab');
+                const coinsTab = document.getElementById('coinsTab');
+                const kbTab = document.getElementById('kbTab');
+                const createMerchantTab = document.getElementById('createMerchantTab');
+                const createRiderTab = document.getElementById('createRiderTab');
+                const tabReqBtn = document.getElementById('tabRequests');
+                const tabCoinsBtn = document.getElementById('tabCoins');
+                const tabKbBtn = document.getElementById('tabKb');
+                const tabCreateMerchantBtn = document.getElementById('tabCreateMerchant');
+                const tabCreateRiderBtn = document.getElementById('tabCreateRider');
 
-        function showDashboard() {
-            document.getElementById('loginView').classList.add('hidden');
-            document.getElementById('dashboardView').classList.remove('hidden');
-            loadRequests();
-        }
+                // Hide all tabs
+                reqTab.classList.add('hidden');
+                coinsTab.classList.add('hidden');
+                kbTab.classList.add('hidden');
+                createMerchantTab.classList.add('hidden');
+                createRiderTab.classList.add('hidden');
 
-        function logout() {
-            sessionStorage.removeItem('adminToken');
-            sessionStorage.removeItem('systemKey');
-            authToken = '';
-            systemKey = '';
-            document.getElementById('loginView').classList.remove('hidden');
-            document.getElementById('dashboardView').classList.add('hidden');
-        }
-
-        // Load Requests
-        async function loadRequests() {
-            try {
-                let endpoint;
-                if (walletType === 'merchant') {
-                    endpoint = `${API_BASE}/admin/wallet/requests?status=pending`;
-                } else if (walletType === 'customer') {
-                    endpoint = `${API_BASE}/admin/wallet/customer-requests?status=pending`;
-                } else {
-                    endpoint = `${API_BASE}/admin/wallet/rider-requests?status=pending`;
-                }
-
-                const res = await fetch(endpoint, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
+                // Reset all button styles
+                [tabReqBtn, tabCoinsBtn, tabKbBtn, tabCreateMerchantBtn, tabCreateRiderBtn].forEach(btn => {
+                    btn.style.background = 'rgba(255,255,255,0.2)';
                 });
-                const data = await res.json();
 
-                if (data.success) {
-                    currentRequests = data.data.requests;
-                    renderRequests();
-                    updateStats();
+                if (tab === 'requests') {
+                    reqTab.classList.remove('hidden');
+                    tabReqBtn.style.background = 'rgba(255,255,255,0.4)';
+                } else if (tab === 'coins') {
+                    coinsTab.classList.remove('hidden');
+                    tabCoinsBtn.style.background = 'rgba(255,255,255,0.4)';
+                    loadCoinRequests();
+                } else if (tab === 'createMerchant') {
+                    createMerchantTab.classList.remove('hidden');
+                    tabCreateMerchantBtn.style.background = 'rgba(255,255,255,0.4)';
+                } else if (tab === 'createRider') {
+                    createRiderTab.classList.remove('hidden');
+                    tabCreateRiderBtn.style.background = 'rgba(255,255,255,0.4)';
                 } else {
-                    document.getElementById('requestsContainer').innerHTML =
-                        `<div class="error">${data.error || 'Failed to load requests'}</div>`;
+                    kbTab.classList.remove('hidden');
+                    tabKbBtn.style.background = 'rgba(255,255,255,0.4)';
                 }
-            } catch (err) {
-                document.getElementById('requestsContainer').innerHTML =
-                    `<div class="error">Network error. Please refresh.</div>`;
             }
-        }
 
-        function renderRequests() {
-            const container = document.getElementById('requestsContainer');
+            // Generate random password
+            function generatePassword() {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+                let password = '';
+                for (let i = 0; i < 12; i++) {
+                    password += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                document.getElementById('newMerchantPassword').value = password;
+            }
 
-            if (currentRequests.length === 0) {
-                container.innerHTML = `
+            // Create merchant account
+            async function createMerchantAccount() {
+                const email = document.getElementById('newMerchantEmail').value.trim();
+                const businessName = document.getElementById('newMerchantName').value.trim();
+                const businessType = document.getElementById('newMerchantType').value;
+                const password = document.getElementById('newMerchantPassword').value;
+                const resultDiv = document.getElementById('createMerchantResult');
+                const btn = document.getElementById('createMerchantBtn');
+
+                if (!email || !businessName || !password) {
+                    resultDiv.innerHTML = '<div style="background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 8px;">❌ Please fill in all fields and generate a password</div>';
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Creating...';
+
+                try {
+                    const res = await fetch(API_BASE + '/admin/create-merchant', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + authToken
+                        },
+                        body: JSON.stringify({
+                            email,
+                            businessName,
+                            businessType,
+                            password,
+                            adminKey: systemKey
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success) {
+                        resultDiv.innerHTML = `
+                            <div style="background: #dcfce7; color: #16a34a; padding: 16px; border-radius: 8px;">
+                                <h4 style="margin-bottom: 8px;">✅ Merchant Created Successfully!</h4>
+                                <p><strong>Email:</strong> ${email}</p>
+                                <p><strong>Business:</strong> ${businessName} (${businessType})</p>
+                                <p><strong>Temporary Password:</strong> <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${password}</code></p>
+                                <p style="margin-top: 8px; font-size: 13px; color: #666;">⚠️ The merchant must change their password on first login.</p>
+                            </div>
+                        `;
+                        // Clear form
+                        document.getElementById('newMerchantEmail').value = '';
+                        document.getElementById('newMerchantName').value = '';
+                        document.getElementById('newMerchantPassword').value = '';
+                    } else {
+                        resultDiv.innerHTML = `<div style="background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 8px;">❌ ${data.error || 'Failed to create merchant'}</div>`;
+                    }
+                } catch (err) {
+                    resultDiv.innerHTML = `<div style="background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 8px;">❌ Network error: ${err.message}</div>`;
+                }
+
+                btn.disabled = false;
+                btn.innerHTML = '✅ Create Merchant Account';
+            }
+
+            // Generate random password for rider
+            function generateRiderPassword() {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+                let password = '';
+                for (let i = 0; i < 12; i++) {
+                    password += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                document.getElementById('newRiderPassword').value = password;
+            }
+
+            // Create rider account
+            async function createRiderAccount() {
+                const firstName = document.getElementById('newRiderFirstName').value.trim();
+                const lastName = document.getElementById('newRiderLastName').value.trim();
+                const email = document.getElementById('newRiderEmail').value.trim();
+                const phone = document.getElementById('newRiderPhone').value.trim();
+                const password = document.getElementById('newRiderPassword').value;
+                const resultDiv = document.getElementById('createRiderResult');
+                const btn = document.getElementById('createRiderBtn');
+
+                if (!firstName || !lastName || !email || !phone || !password) {
+                    resultDiv.innerHTML = '<div style="background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 8px;">❌ Please fill in all fields and generate a password</div>';
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Creating...';
+
+                try {
+                    const res = await fetch(API_BASE + '/admin/create-rider', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + authToken
+                        },
+                        body: JSON.stringify({
+                            firstName,
+                            lastName,
+                            email,
+                            phone,
+                            password,
+                            adminKey: systemKey
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success) {
+                        resultDiv.innerHTML = `
+                            <div style="background: #dcfce7; color: #16a34a; padding: 16px; border-radius: 8px;">
+                                <h4 style="margin-bottom: 8px;">✅ Rider Created Successfully!</h4>
+                                <p><strong>Name:</strong> ${firstName} ${lastName}</p>
+                                <p><strong>Email:</strong> ${email}</p>
+                                <p><strong>Phone:</strong> ${phone}</p>
+                                <p><strong>Temporary Password:</strong> <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">${password}</code></p>
+                                <p style="margin-top: 8px; font-size: 13px; color: #666;">⚠️ The rider must change their password on first login.</p>
+                            </div>
+                        `;
+                        // Clear form
+                        document.getElementById('newRiderFirstName').value = '';
+                        document.getElementById('newRiderLastName').value = '';
+                        document.getElementById('newRiderEmail').value = '';
+                        document.getElementById('newRiderPhone').value = '';
+                        document.getElementById('newRiderPassword').value = '';
+                    } else {
+                        resultDiv.innerHTML = `<div style="background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 8px;">❌ ${data.error || 'Failed to create rider'}</div>`;
+                    }
+                } catch (err) {
+                    resultDiv.innerHTML = `<div style="background: #fee2e2; color: #dc2626; padding: 12px; border-radius: 8px;">❌ Network error: ${err.message}</div>`;
+                }
+
+                btn.disabled = false;
+                btn.innerHTML = '✅ Create Rider Account';
+            }
+
+            // Login
+            document.getElementById('loginForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                systemKey = document.getElementById('systemKey').value;
+
+                document.getElementById('loginBtn').disabled = true;
+                document.getElementById('loginBtn').textContent = 'Logging in...';
+                document.getElementById('loginError').classList.add('hidden');
+
+                try {
+                    const res = await fetch(`${API_BASE}/merchant/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        authToken = data.data.accessToken;
+                        sessionStorage.setItem('adminToken', authToken);
+                        sessionStorage.setItem('systemKey', systemKey);
+                        showDashboard();
+                    } else {
+                        showLoginError(data.error || 'Login failed');
+                    }
+                } catch (err) {
+                    showLoginError('Network error. Please try again.');
+                } finally {
+                    document.getElementById('loginBtn').disabled = false;
+                    document.getElementById('loginBtn').textContent = 'Login';
+                }
+            });
+
+            function showLoginError(msg) {
+                document.getElementById('loginError').textContent = msg;
+                document.getElementById('loginError').classList.remove('hidden');
+            }
+
+            function showDashboard() {
+                document.getElementById('loginView').classList.add('hidden');
+                document.getElementById('dashboardView').classList.remove('hidden');
+                loadRequests();
+            }
+
+            function logout() {
+                sessionStorage.removeItem('adminToken');
+                sessionStorage.removeItem('systemKey');
+                authToken = '';
+                systemKey = '';
+                document.getElementById('loginView').classList.remove('hidden');
+                document.getElementById('dashboardView').classList.add('hidden');
+            }
+
+            // Load Requests
+            async function loadRequests() {
+                try {
+                    let endpoint;
+                    if (walletType === 'merchant') {
+                        endpoint = `${API_BASE}/admin/wallet/requests?status=pending`;
+                    } else if (walletType === 'customer') {
+                        endpoint = `${API_BASE}/admin/wallet/customer-requests?status=pending`;
+                    } else {
+                        endpoint = `${API_BASE}/admin/wallet/rider-requests?status=pending`;
+                    }
+
+                    const res = await fetch(endpoint, {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        currentRequests = data.data.requests;
+                        renderRequests();
+                        updateStats();
+                    } else {
+                        document.getElementById('requestsContainer').innerHTML =
+                            `<div class="error">${data.error || 'Failed to load requests'}</div>`;
+                    }
+                } catch (err) {
+                    document.getElementById('requestsContainer').innerHTML =
+                        `<div class="error">Network error. Please refresh.</div>`;
+                }
+            }
+
+            function renderRequests() {
+                const container = document.getElementById('requestsContainer');
+
+                if (currentRequests.length === 0) {
+                    container.innerHTML = `
                     <div class="empty-state">
                         <h3>🎉 All caught up!</h3>
                         <p>No pending ${walletType} requests to review</p>
                     </div>`;
-                return;
-            }
-
-            container.innerHTML = currentRequests.map(req => {
-                let name, email, label, icon;
-                if (walletType === 'merchant') {
-                    name = req.merchant_name || 'Unknown Merchant';
-                    email = req.merchant_email || '-';
-                    label = 'Merchant';
-                    icon = '🏪';
-                } else if (walletType === 'customer') {
-                    name = req.customer_name || 'Unknown Customer';
-                    email = req.customer_email || '-';
-                    label = 'Customer';
-                    icon = '👤';
-                } else {
-                    name = req.rider_name || 'Unknown Rider';
-                    email = req.rider_email || '-';
-                    label = 'Rider';
-                    icon = '🏍️';
+                    return;
                 }
 
-                return `
+                container.innerHTML = currentRequests.map(req => {
+                    let name, email, label, icon;
+                    if (walletType === 'merchant') {
+                        name = req.merchant_name || 'Unknown Merchant';
+                        email = req.merchant_email || '-';
+                        label = 'Merchant';
+                        icon = '🏪';
+                    } else if (walletType === 'customer') {
+                        name = req.customer_name || 'Unknown Customer';
+                        email = req.customer_email || '-';
+                        label = 'Customer';
+                        icon = '👤';
+                    } else {
+                        name = req.rider_name || 'Unknown Rider';
+                        email = req.rider_email || '-';
+                        label = 'Rider';
+                        icon = '🏍️';
+                    }
+
+                    return `
                 <div class="request-card" data-id="${req.id}">
                     <div class="request-header">
                         <span class="request-id">${icon} Request #${req.id}</span>
@@ -1286,195 +1550,195 @@
                     </div>
                 </div>
             `}).join('');
-        }
+            }
 
-        function updateStats() {
-            document.getElementById('pendingCount').textContent = currentRequests.length;
-            const totalAmount = currentRequests.reduce((sum, r) => sum + parseFloat(r.amount), 0);
-            document.getElementById('totalAmount').textContent = '₱' + totalAmount.toLocaleString();
-        }
+            function updateStats() {
+                document.getElementById('pendingCount').textContent = currentRequests.length;
+                const totalAmount = currentRequests.reduce((sum, r) => sum + parseFloat(r.amount), 0);
+                document.getElementById('totalAmount').textContent = '₱' + totalAmount.toLocaleString();
+            }
 
-        // Modals
-        function openApproveModal(id, merchant, amount) {
-            selectedRequestId = id;
-            document.getElementById('approveAmount').textContent = '₱' + parseFloat(amount).toLocaleString();
-            document.getElementById('approveMerchant').textContent = merchant;
-            document.getElementById('approveNotes').value = '';
-            document.getElementById('approveModal').classList.remove('hidden');
-        }
+            // Modals
+            function openApproveModal(id, merchant, amount) {
+                selectedRequestId = id;
+                document.getElementById('approveAmount').textContent = '₱' + parseFloat(amount).toLocaleString();
+                document.getElementById('approveMerchant').textContent = merchant;
+                document.getElementById('approveNotes').value = '';
+                document.getElementById('approveModal').classList.remove('hidden');
+            }
 
-        function openRejectModal(id, merchant) {
-            selectedRequestId = id;
-            document.getElementById('rejectMerchant').textContent = merchant;
-            document.getElementById('rejectReason').value = '';
-            document.getElementById('rejectModal').classList.remove('hidden');
-        }
+            function openRejectModal(id, merchant) {
+                selectedRequestId = id;
+                document.getElementById('rejectMerchant').textContent = merchant;
+                document.getElementById('rejectReason').value = '';
+                document.getElementById('rejectModal').classList.remove('hidden');
+            }
 
-        function closeModal(id) {
-            document.getElementById(id).classList.add('hidden');
-            selectedRequestId = null;
-        }
+            function closeModal(id) {
+                document.getElementById(id).classList.add('hidden');
+                selectedRequestId = null;
+            }
 
-        function showImage(src) {
-            document.getElementById('previewImage').src = src;
-            document.getElementById('imageModal').classList.remove('hidden');
-        }
+            function showImage(src) {
+                document.getElementById('previewImage').src = src;
+                document.getElementById('imageModal').classList.remove('hidden');
+            }
 
-        // API Actions
-        async function confirmApprove() {
-            const notes = document.getElementById('approveNotes').value;
-            document.getElementById('confirmApproveBtn').disabled = true;
-            document.getElementById('confirmApproveBtn').textContent = 'Processing...';
+            // API Actions
+            async function confirmApprove() {
+                const notes = document.getElementById('approveNotes').value;
+                document.getElementById('confirmApproveBtn').disabled = true;
+                document.getElementById('confirmApproveBtn').textContent = 'Processing...';
 
-            try {
-                let endpoint;
-                if (walletType === 'merchant') {
-                    endpoint = `${API_BASE}/admin/wallet/requests/${selectedRequestId}/approve`;
-                } else if (walletType === 'customer') {
-                    endpoint = `${API_BASE}/admin/wallet/customer-requests/${selectedRequestId}/approve`;
-                } else {
-                    endpoint = `${API_BASE}/admin/wallet/rider-requests/${selectedRequestId}/approve`;
+                try {
+                    let endpoint;
+                    if (walletType === 'merchant') {
+                        endpoint = `${API_BASE}/admin/wallet/requests/${selectedRequestId}/approve`;
+                    } else if (walletType === 'customer') {
+                        endpoint = `${API_BASE}/admin/wallet/customer-requests/${selectedRequestId}/approve`;
+                    } else {
+                        endpoint = `${API_BASE}/admin/wallet/rider-requests/${selectedRequestId}/approve`;
+                    }
+
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({ systemKey, notes })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        closeModal('approveModal');
+                        loadRequests();
+                        alert('✅ Top-up approved! New balance: ₱' + data.data.newBalance);
+                    } else {
+                        alert('Error: ' + (data.error || 'Approval failed'));
+                    }
+                } catch (err) {
+                    alert('Network error. Please try again.');
+                } finally {
+                    document.getElementById('confirmApproveBtn').disabled = false;
+                    document.getElementById('confirmApproveBtn').textContent = 'Approve';
+                }
+            }
+
+            async function confirmReject() {
+                const reason = document.getElementById('rejectReason').value;
+                if (!reason) {
+                    alert('Please enter a rejection reason');
+                    return;
                 }
 
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({ systemKey, notes })
+                document.getElementById('confirmRejectBtn').disabled = true;
+                document.getElementById('confirmRejectBtn').textContent = 'Processing...';
+
+                try {
+                    let endpoint;
+                    if (walletType === 'merchant') {
+                        endpoint = `${API_BASE}/admin/wallet/requests/${selectedRequestId}/reject`;
+                    } else if (walletType === 'customer') {
+                        endpoint = `${API_BASE}/admin/wallet/customer-requests/${selectedRequestId}/reject`;
+                    } else {
+                        endpoint = `${API_BASE}/admin/wallet/rider-requests/${selectedRequestId}/reject`;
+                    }
+
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({ reason })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        closeModal('rejectModal');
+                        loadRequests();
+                        alert('Request rejected');
+                    } else {
+                        alert('Error: ' + (data.error || 'Rejection failed'));
+                    }
+                } catch (err) {
+                    alert('Network error. Please try again.');
+                } finally {
+                    document.getElementById('confirmRejectBtn').disabled = false;
+                    document.getElementById('confirmRejectBtn').textContent = 'Reject';
+                }
+            }
+
+            // ==========================================
+            // 🪙 COIN REQUEST FUNCTIONS
+            // ==========================================
+
+            let coinType = 'merchant'; // 'merchant' or 'rider'
+            let coinRequests = [];
+            let selectedCoinRequestId = null;
+
+            function switchCoinType(type) {
+                coinType = type;
+                const btnMerchant = document.getElementById('btnMerchantCoin');
+                const btnRider = document.getElementById('btnRiderCoin');
+                const subtitle = document.getElementById('headerSubtitle');
+
+                [btnMerchant, btnRider].forEach(btn => {
+                    btn.style.background = 'white';
+                    btn.style.color = '#eab308';
                 });
-                const data = await res.json();
 
-                if (data.success) {
-                    closeModal('approveModal');
-                    loadRequests();
-                    alert('✅ Top-up approved! New balance: ₱' + data.data.newBalance);
+                if (type === 'merchant') {
+                    btnMerchant.style.background = '#eab308';
+                    btnMerchant.style.color = 'white';
+                    subtitle.textContent = 'Manage merchant coin purchases';
                 } else {
-                    alert('Error: ' + (data.error || 'Approval failed'));
+                    btnRider.style.background = '#eab308';
+                    btnRider.style.color = 'white';
+                    subtitle.textContent = 'Manage rider coin purchases';
                 }
-            } catch (err) {
-                alert('Network error. Please try again.');
-            } finally {
-                document.getElementById('confirmApproveBtn').disabled = false;
-                document.getElementById('confirmApproveBtn').textContent = 'Approve';
-            }
-        }
-
-        async function confirmReject() {
-            const reason = document.getElementById('rejectReason').value;
-            if (!reason) {
-                alert('Please enter a rejection reason');
-                return;
+                loadCoinRequests();
             }
 
-            document.getElementById('confirmRejectBtn').disabled = true;
-            document.getElementById('confirmRejectBtn').textContent = 'Processing...';
+            async function loadCoinRequests() {
+                try {
+                    const endpoint = coinType === 'merchant'
+                        ? `${API_BASE}/admin/coins/merchant-requests?status=pending`
+                        : `${API_BASE}/admin/coins/rider-requests?status=pending`;
 
-            try {
-                let endpoint;
-                if (walletType === 'merchant') {
-                    endpoint = `${API_BASE}/admin/wallet/requests/${selectedRequestId}/reject`;
-                } else if (walletType === 'customer') {
-                    endpoint = `${API_BASE}/admin/wallet/customer-requests/${selectedRequestId}/reject`;
-                } else {
-                    endpoint = `${API_BASE}/admin/wallet/rider-requests/${selectedRequestId}/reject`;
+                    const res = await fetch(endpoint, {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        coinRequests = data.requests;
+                        renderCoinRequests();
+                        updateCoinStats();
+                    }
+                } catch (err) {
+                    console.error('Error loading coin requests:', err);
                 }
-
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({ reason })
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    closeModal('rejectModal');
-                    loadRequests();
-                    alert('Request rejected');
-                } else {
-                    alert('Error: ' + (data.error || 'Rejection failed'));
-                }
-            } catch (err) {
-                alert('Network error. Please try again.');
-            } finally {
-                document.getElementById('confirmRejectBtn').disabled = false;
-                document.getElementById('confirmRejectBtn').textContent = 'Reject';
             }
-        }
 
-        // ==========================================
-        // 🪙 COIN REQUEST FUNCTIONS
-        // ==========================================
-
-        let coinType = 'merchant'; // 'merchant' or 'rider'
-        let coinRequests = [];
-        let selectedCoinRequestId = null;
-
-        function switchCoinType(type) {
-            coinType = type;
-            const btnMerchant = document.getElementById('btnMerchantCoin');
-            const btnRider = document.getElementById('btnRiderCoin');
-            const subtitle = document.getElementById('headerSubtitle');
-
-            [btnMerchant, btnRider].forEach(btn => {
-                btn.style.background = 'white';
-                btn.style.color = '#eab308';
-            });
-
-            if (type === 'merchant') {
-                btnMerchant.style.background = '#eab308';
-                btnMerchant.style.color = 'white';
-                subtitle.textContent = 'Manage merchant coin purchases';
-            } else {
-                btnRider.style.background = '#eab308';
-                btnRider.style.color = 'white';
-                subtitle.textContent = 'Manage rider coin purchases';
-            }
-            loadCoinRequests();
-        }
-
-        async function loadCoinRequests() {
-            try {
-                const endpoint = coinType === 'merchant'
-                    ? `${API_BASE}/admin/coins/merchant-requests?status=pending`
-                    : `${API_BASE}/admin/coins/rider-requests?status=pending`;
-
-                const res = await fetch(endpoint, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    coinRequests = data.requests;
-                    renderCoinRequests();
-                    updateCoinStats();
-                }
-            } catch (err) {
-                console.error('Error loading coin requests:', err);
-            }
-        }
-
-        function renderCoinRequests() {
-            const container = document.getElementById('coinRequestsContainer');
-            if (coinRequests.length === 0) {
-                container.innerHTML = `<div class="empty-state">
+            function renderCoinRequests() {
+                const container = document.getElementById('coinRequestsContainer');
+                if (coinRequests.length === 0) {
+                    container.innerHTML = `<div class="empty-state">
                     <div style="font-size: 48px; margin-bottom: 12px;">🪙</div>
                     <h3>No Pending Coin Requests</h3>
                     <p>All ${coinType} coin purchases have been processed</p>
                 </div>`;
-                return;
-            }
+                    return;
+                }
 
-            container.innerHTML = coinRequests.map(req => {
-                const name = coinType === 'merchant' ? (req.merchant_name || 'Unknown Merchant') : (req.rider_name || 'Unknown Rider');
-                const email = coinType === 'merchant' ? (req.merchant_email || '-') : (req.rider_email || '-');
-                const icon = coinType === 'merchant' ? '🏪' : '🏍️';
+                container.innerHTML = coinRequests.map(req => {
+                    const name = coinType === 'merchant' ? (req.merchant_name || 'Unknown Merchant') : (req.rider_name || 'Unknown Rider');
+                    const email = coinType === 'merchant' ? (req.merchant_email || '-') : (req.rider_email || '-');
+                    const icon = coinType === 'merchant' ? '🏪' : '🏍️';
 
-                return `<div class="request-card">
+                    return `<div class="request-card">
                     <div class="request-header">
                         <div class="merchant-info">
                             <div class="merchant-avatar">${icon}</div>
@@ -1497,82 +1761,82 @@
                         <button class="btn btn-success" onclick="approveCoinRequest(${req.id})">Approve</button>
                     </div>
                 </div>`;
-            }).join('');
-        }
-
-        function updateCoinStats() {
-            const pending = coinRequests.length;
-            const totalCoins = coinRequests.reduce((sum, r) => sum + parseInt(r.amount), 0);
-
-            document.getElementById('coinPendingCount').textContent = pending;
-            document.getElementById('coinTotalAmount').textContent = '🪙 ' + totalCoins.toLocaleString();
-        }
-
-        async function approveCoinRequest(id) {
-            selectedCoinRequestId = id;
-            const req = coinRequests.find(r => r.id === id);
-            if (!req) return;
-
-            const name = coinType === 'merchant' ? (req.merchant_name || 'Unknown') : (req.rider_name || 'Unknown');
-            if (!confirm(`Approve ${parseInt(req.amount).toLocaleString()} coins for ${name}?`)) return;
-
-            try {
-                const endpoint = coinType === 'merchant'
-                    ? `${API_BASE}/admin/coins/merchant-requests/${id}/approve`
-                    : `${API_BASE}/admin/coins/rider-requests/${id}/approve`;
-
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({ systemKey, notes: 'Approved via admin dashboard' })
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    alert('✅ Coin purchase approved!');
-                    loadCoinRequests();
-                } else {
-                    alert('Error: ' + (data.error || 'Approval failed'));
-                }
-            } catch (err) {
-                alert('Network error. Please try again.');
+                }).join('');
             }
-        }
 
-        async function rejectCoinRequest(id) {
-            selectedCoinRequestId = id;
-            const reason = prompt('Enter rejection reason:');
-            if (reason === null) return;
+            function updateCoinStats() {
+                const pending = coinRequests.length;
+                const totalCoins = coinRequests.reduce((sum, r) => sum + parseInt(r.amount), 0);
 
-            try {
-                const endpoint = coinType === 'merchant'
-                    ? `${API_BASE}/admin/coins/merchant-requests/${id}/reject`
-                    : `${API_BASE}/admin/coins/rider-requests/${id}/reject`;
-
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({ reason: reason || 'No reason provided' })
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    alert('Request rejected');
-                    loadCoinRequests();
-                } else {
-                    alert('Error: ' + (data.error || 'Rejection failed'));
-                }
-            } catch (err) {
-                alert('Network error. Please try again.');
+                document.getElementById('coinPendingCount').textContent = pending;
+                document.getElementById('coinTotalAmount').textContent = '🪙 ' + totalCoins.toLocaleString();
             }
-        }
-    </script>
+
+            async function approveCoinRequest(id) {
+                selectedCoinRequestId = id;
+                const req = coinRequests.find(r => r.id === id);
+                if (!req) return;
+
+                const name = coinType === 'merchant' ? (req.merchant_name || 'Unknown') : (req.rider_name || 'Unknown');
+                if (!confirm(`Approve ${parseInt(req.amount).toLocaleString()} coins for ${name}?`)) return;
+
+                try {
+                    const endpoint = coinType === 'merchant'
+                        ? `${API_BASE}/admin/coins/merchant-requests/${id}/approve`
+                        : `${API_BASE}/admin/coins/rider-requests/${id}/approve`;
+
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({ systemKey, notes: 'Approved via admin dashboard' })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        alert('✅ Coin purchase approved!');
+                        loadCoinRequests();
+                    } else {
+                        alert('Error: ' + (data.error || 'Approval failed'));
+                    }
+                } catch (err) {
+                    alert('Network error. Please try again.');
+                }
+            }
+
+            async function rejectCoinRequest(id) {
+                selectedCoinRequestId = id;
+                const reason = prompt('Enter rejection reason:');
+                if (reason === null) return;
+
+                try {
+                    const endpoint = coinType === 'merchant'
+                        ? `${API_BASE}/admin/coins/merchant-requests/${id}/reject`
+                        : `${API_BASE}/admin/coins/rider-requests/${id}/reject`;
+
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({ reason: reason || 'No reason provided' })
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        alert('Request rejected');
+                        loadCoinRequests();
+                    } else {
+                        alert('Error: ' + (data.error || 'Rejection failed'));
+                    }
+                } catch (err) {
+                    alert('Network error. Please try again.');
+                }
+            }
+        </script>
 </body>
 
 </html>

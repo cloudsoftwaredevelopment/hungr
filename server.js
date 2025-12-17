@@ -1248,10 +1248,47 @@ apiRouter.post('/merchant/login', async (req, res) => {
             phone_number: merchant.phone_number,
             restaurant_id: merchant.restaurant_id,
             is_online: isOnline,  // Include current online status from restaurants table
+            mustChangePassword: merchant.must_change_password === 1,
             accessToken: token
         });
     } catch (err) {
         sendError(res, 500, "Login failed", "AUTH_ERROR", err);
+    }
+});
+
+// Change merchant password (used for first-time password change)
+apiRouter.post('/merchant/change-password', verifyToken, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const merchantId = req.user.id;
+
+        if (!newPassword || newPassword.length < 8) {
+            return sendError(res, 400, 'New password must be at least 8 characters');
+        }
+
+        // Get current merchant
+        const [merchants] = await db.execute('SELECT password_hash FROM merchants WHERE id = ?', [merchantId]);
+        if (merchants.length === 0) {
+            return sendError(res, 404, 'Merchant not found');
+        }
+
+        // Verify current password (skip if this is a forced change - currentPassword can be empty)
+        if (currentPassword) {
+            const valid = await bcrypt.compare(currentPassword, merchants[0].password_hash);
+            if (!valid) {
+                return sendError(res, 401, 'Current password is incorrect');
+            }
+        }
+
+        // Hash new password and update
+        const newPasswordHash = await bcrypt.hash(newPassword, 10);
+        await db.execute('UPDATE merchants SET password_hash = ?, must_change_password = 0 WHERE id = ?', [newPasswordHash, merchantId]);
+
+        console.log(`[Merchant #${merchantId}] Password changed successfully`);
+        sendSuccess(res, { success: true }, 'Password changed successfully');
+    } catch (err) {
+        console.error('Change password error:', err);
+        sendError(res, 500, 'Failed to change password');
     }
 });
 
@@ -2033,7 +2070,7 @@ apiRouter.get('/merchant/sales-history', verifyToken, async (req, res) => {
             JOIN order_items oi ON o.id = oi.order_id
             JOIN menu_items m ON oi.menu_item_id = m.id
             WHERE o.restaurant_id = ? 
-              AND o.status IN ('delivered', 'ready_for_pickup', 'completed')
+              AND o.status IN ('preparing', 'ready_for_pickup', 'delivering', 'delivered')
               ${dateFilter}
             GROUP BY o.id
             ORDER BY o.created_at DESC
@@ -2523,6 +2560,150 @@ setInterval(async () => {
         console.error('[Tiered Notification Job] Error:', err.message);
     }
 }, 60000); // Run every 60 seconds
+
+// ==========================================
+// 👨‍💼 ADMIN API - Create Merchant Account
+// ==========================================
+apiRouter.post('/admin/create-merchant', async (req, res) => {
+    try {
+        const { email, businessName, businessType, password, adminKey } = req.body;
+
+        // Verify admin key (simple security - you can enhance this)
+        const ADMIN_KEY = process.env.WALLET_SYSTEM_KEY || 'hungr-admin-2024';
+        if (adminKey !== ADMIN_KEY) {
+            return sendError(res, 401, 'Invalid admin key');
+        }
+
+        // Validate required fields
+        if (!email || !businessName || !businessType || !password) {
+            return sendError(res, 400, 'Missing required fields: email, businessName, businessType, password');
+        }
+
+        if (!['restaurant', 'store'].includes(businessType)) {
+            return sendError(res, 400, 'businessType must be "restaurant" or "store"');
+        }
+
+        // Check if email already exists
+        const [existingMerchants] = await db.execute('SELECT id FROM merchants WHERE email = ?', [email]);
+        if (existingMerchants.length > 0) {
+            return sendError(res, 409, 'A merchant with this email already exists');
+        }
+
+        // Hash the password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create restaurant or store entry first
+        let businessId;
+        if (businessType === 'restaurant') {
+            const [result] = await db.execute(
+                'INSERT INTO restaurants (name, cuisine_type, rating, is_available) VALUES (?, ?, 5.0, 0)',
+                [businessName, 'General']
+            );
+            businessId = result.insertId;
+        } else {
+            // Store - check if stores table exists, if not just continue without store_id
+            try {
+                const [result] = await db.execute(
+                    'INSERT INTO stores (name, is_available) VALUES (?, 0)',
+                    [businessName]
+                );
+                businessId = result.insertId;
+            } catch (storeErr) {
+                console.log('Stores table may not exist, continuing without store_id');
+                businessId = null;
+            }
+        }
+
+        // Create merchant account with must_change_password = 1
+        const [merchantResult] = await db.execute(
+            `INSERT INTO merchants (email, password_hash, name, ${businessType === 'restaurant' ? 'restaurant_id' : 'store_id'}, status, must_change_password) 
+             VALUES (?, ?, ?, ?, 'active', 1)`,
+            [email, passwordHash, businessName, businessId]
+        );
+
+        const merchantId = merchantResult.insertId;
+
+        console.log(`[Admin] Created merchant #${merchantId}: ${businessName} (${businessType}, email: ${email})`);
+
+        sendSuccess(res, {
+            merchantId,
+            email,
+            businessName,
+            businessType,
+            businessId,
+            mustChangePassword: true
+        }, 'Merchant account created successfully');
+
+    } catch (err) {
+        console.error('Create merchant error:', err);
+        sendError(res, 500, 'Failed to create merchant account: ' + err.message);
+    }
+});
+
+// ==========================================
+// 👨‍💼 ADMIN API - Create Rider Account
+// ==========================================
+apiRouter.post('/admin/create-rider', async (req, res) => {
+    try {
+        const { firstName, lastName, email, phone, password, adminKey } = req.body;
+
+        // Verify admin key
+        const ADMIN_KEY = process.env.WALLET_SYSTEM_KEY || 'hungr-admin-2024';
+        if (adminKey !== ADMIN_KEY) {
+            return sendError(res, 401, 'Invalid admin key');
+        }
+
+        // Validate required fields
+        if (!firstName || !lastName || !email || !phone || !password) {
+            return sendError(res, 400, 'Missing required fields: firstName, lastName, email, phone, password');
+        }
+
+        // Check if email already exists in users or riders
+        const [existingUsers] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+        if (existingUsers.length > 0) {
+            return sendError(res, 409, 'A user with this email already exists');
+        }
+
+        const [existingRiders] = await db.execute('SELECT id FROM riders WHERE email = ?', [email]);
+        if (existingRiders.length > 0) {
+            return sendError(res, 409, 'A rider with this email already exists');
+        }
+
+        // Hash the password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create user entry first
+        const fullName = `${firstName} ${lastName}`;
+        const [userResult] = await db.execute(
+            'INSERT INTO users (username, email, phone_number, password_hash, user_type) VALUES (?, ?, ?, ?, ?)',
+            [fullName, email, phone, passwordHash, 'rider']
+        );
+        const userId = userResult.insertId;
+
+        // Create rider entry with must_change_password = 1
+        const [riderResult] = await db.execute(
+            `INSERT INTO riders (user_id, name, first_name, last_name, email, phone, vehicle_type, plate_number, status, must_change_password) 
+             VALUES (?, ?, ?, ?, ?, ?, 'motorcycle', 'PENDING', 'approved', 1)`,
+            [userId, fullName, firstName, lastName, email, phone]
+        );
+
+        const riderId = riderResult.insertId;
+
+        console.log(`[Admin] Created rider #${riderId}: ${fullName} (email: ${email}, user_id: ${userId})`);
+
+        sendSuccess(res, {
+            riderId,
+            userId,
+            email,
+            name: fullName,
+            mustChangePassword: true
+        }, 'Rider account created successfully');
+
+    } catch (err) {
+        console.error('Create rider error:', err);
+        sendError(res, 500, 'Failed to create rider account: ' + err.message);
+    }
+});
 
 httpServer.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT} (SPA Fallback Active, Socket.io Ready)`);
