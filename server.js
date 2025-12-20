@@ -2361,18 +2361,27 @@ apiRouter.post('/auth/login', async (req, res) => {
     }
 });
 
-// PUBLIC: Get Restaurant Menu
-apiRouter.get('/restaurants/:id/menu', async (req, res) => {
+// PUBLIC: Get Restaurant Menu (supports ID or slug)
+apiRouter.get('/restaurants/:idOrSlug/menu', async (req, res) => {
     try {
-        const restaurantId = req.params.id;
+        const idOrSlug = req.params.idOrSlug;
 
-        // Fetch restaurant details
-        const [restaurantRows] = await db.execute('SELECT * FROM restaurants WHERE id = ?', [restaurantId]);
+        // Check if it's a numeric ID or a slug
+        const isNumeric = /^\d+$/.test(idOrSlug);
+
+        // Fetch restaurant details by ID or slug
+        let restaurantRows;
+        if (isNumeric) {
+            [restaurantRows] = await db.execute('SELECT * FROM restaurants WHERE id = ?', [idOrSlug]);
+        } else {
+            [restaurantRows] = await db.execute('SELECT * FROM restaurants WHERE slug = ?', [idOrSlug.toLowerCase()]);
+        }
+
         if (restaurantRows.length === 0) return sendError(res, 404, 'Restaurant not found');
         const restaurant = restaurantRows[0];
 
         // Fetch menu items
-        const menuItems = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? AND is_available = 1 ORDER BY category, name', [restaurantId]);
+        const menuItems = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? AND is_available = 1 ORDER BY category, name', [restaurant.id]);
 
         sendSuccess(res, { restaurant, menu: menuItems });
     } catch (err) {
