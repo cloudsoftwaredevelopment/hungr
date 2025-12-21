@@ -397,6 +397,15 @@ const pool = mysql.createPool({
             console.log("restaurants premium columns might already exist.");
         }
 
+        // Add delivery_eta_arrival to orders and store_paid_orders
+        try {
+            await poolPromise.execute('ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_eta_arrival DATETIME DEFAULT NULL');
+            await poolPromise.execute('ALTER TABLE store_paid_orders ADD COLUMN IF NOT EXISTS delivery_eta_arrival DATETIME DEFAULT NULL');
+            console.log("delivery_eta_arrival columns checked/added.");
+        } catch (e) {
+            console.log("delivery_eta_arrival columns might already exist.");
+        }
+
         // Add location columns to restaurants (for Haversine rider dispatch)
         try {
             await poolPromise.execute(`
@@ -537,6 +546,8 @@ app.get('/api/orders/history', verifyToken, async (req, res) => {
                 o.total_amount as amount,
                 o.status,
                 o.created_at,
+                o.rider_id,
+                o.delivery_eta_arrival,
                 r.name as merchant_name,
                 'food' as type
             FROM orders o
@@ -553,6 +564,8 @@ app.get('/api/orders/history', verifyToken, async (req, res) => {
                 o.total_amount as amount,
                 o.status,
                 o.created_at,
+                o.rider_id,
+                o.delivery_eta_arrival,
                 s.name as merchant_name,
                 'store' as type
             FROM store_paid_orders o
@@ -1039,6 +1052,18 @@ app.post('/api/riders/:id/orders/:orderId/accept', verifyToken, async (req, res)
             message: `${rider.name} is on the way! ETA: ${etaMinutes} min`
         });
 
+        // Notify customer via Socket.IO
+        const userOrderTable = orderType === 'food' ? 'orders' : 'store_paid_orders';
+        const [userRows] = await db.execute(`SELECT user_id FROM ${userOrderTable} WHERE id = ?`, [orderId]);
+        if (userRows.length > 0) {
+            io.emit(`user_${userRows[0].user_id}_order_update`, {
+                orderId: parseInt(orderId),
+                status: orderType === 'food' ? 'preparing' : 'assigned',
+                riderId: parseInt(riderId),
+                message: 'Rider picking up order and on Queue'
+            });
+        }
+
         console.log(`[Order #${orderId}] Accepted by Rider #${riderId} (${rider.name}). ETA: ${etaMinutes} min, Distance: ${distance.toFixed(2)}km`);
 
         sendSuccess(res, {
@@ -1500,29 +1525,59 @@ apiRouter.get('/merchant/nearby-riders', verifyToken, async (req, res) => {
 
 apiRouter.post('/merchant/verify-rider', verifyToken, async (req, res) => {
     try {
+        const { restaurantId } = req.user;
         const { orderId, riderIdCode, orderType } = req.body;
 
-        // Logic: Verify if the provided Rider Code matches the assigned rider 'id' or 'code'
-        // For MVP: Rider's ID IS the code. 
-
         const table = orderType === 'store' ? 'store_paid_orders' : 'orders';
+        const storeTable = orderType === 'store' ? 'stores' : 'restaurants';
+        const storeCol = orderType === 'store' ? 'store_id' : 'restaurant_id';
 
-        const [rows] = await db.execute(`SELECT rider_id FROM ${table} WHERE id = ?`, [orderId]);
+        const [rows] = await db.execute(`
+            SELECT o.rider_id, o.user_id, 
+                   u.latitude as customer_lat, u.longitude as customer_lng,
+                   s.latitude as merchant_lat, s.longitude as merchant_lng
+            FROM ${table} o
+            JOIN users u ON o.user_id = u.id
+            JOIN ${storeTable} s ON o.${storeCol} = s.id
+            WHERE o.id = ? AND o.${storeCol} = ?
+        `, [orderId, restaurantId]);
+
         if (rows.length === 0) return sendError(res, 404, "Order not found");
 
-        const assignedRiderId = rows[0].rider_id;
+        const order = rows[0];
+        const assignedRiderId = order.rider_id;
 
         if (!assignedRiderId) return sendError(res, 400, "No rider assigned yet");
 
         if (parseInt(assignedRiderId) === parseInt(riderIdCode)) {
-            // Success! Update status to 'delivering' (or handover complete)
-            await db.execute(`UPDATE ${table} SET status = 'delivering' WHERE id = ?`, [orderId]);
+            // Calculate Delivery ETA
+            let deliveryEtaMinutes = 15;
+            if (order.merchant_lat && order.merchant_lng && order.customer_lat && order.customer_lng) {
+                const distance = haversineDistance(
+                    parseFloat(order.merchant_lat), parseFloat(order.merchant_lng),
+                    parseFloat(order.customer_lat), parseFloat(order.customer_lng)
+                );
+                deliveryEtaMinutes = Math.ceil(distance / 0.25);
+                if (deliveryEtaMinutes < 5) deliveryEtaMinutes = 5;
+                if (deliveryEtaMinutes > 90) deliveryEtaMinutes = 90;
+            }
+            const deliveryEtaArrival = new Date(Date.now() + deliveryEtaMinutes * 60 * 1000);
+
+            // Success! Update status to 'delivering'
+            await db.execute(`UPDATE ${table} SET status = 'delivering', delivery_eta_arrival = ? WHERE id = ?`, [deliveryEtaArrival, orderId]);
+
+            // Notify customer via Socket.IO
+            io.emit(`user_${order.user_id}_order_update`, {
+                orderId: parseInt(orderId),
+                status: 'delivering',
+                message: 'Rider on the way to deliver',
+                delivery_eta_arrival: deliveryEtaArrival.toISOString()
+            });
+
             sendSuccess(res, { verified: true }, "Rider Verified. Order handed over.");
         } else {
             sendError(res, 401, "Invalid Rider ID. Verification failed.");
         }
-
-        sendError(res, 500, "Verification Error");
     } catch (err) {
         console.error("Verify Rider Error:", err);
         sendError(res, 500, "Verification failed", "DB_ERROR", err);
@@ -1553,6 +1608,16 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
         // If status is 'preparing' (accept), insert into prepared_orders and notify riders
         if (status === 'preparing') {
             await db.execute('INSERT INTO prepared_orders (order_id, order_type, restaurant_id) VALUES (?, ?, ?)', [orderId, type || 'food', restaurantId]);
+
+            // Notify customer via Socket.IO
+            const [userRows] = await db.execute(`SELECT user_id FROM ${table} WHERE id = ?`, [orderId]);
+            if (userRows.length > 0) {
+                io.emit(`user_${userRows[0].user_id}_order_update`, {
+                    orderId: parseInt(orderId),
+                    status: 'preparing',
+                    message: 'Your order is being prepared'
+                });
+            }
 
             // Get restaurant location
             const [restaurantRows] = await db.execute('SELECT latitude, longitude, name FROM restaurants WHERE id = ?', [restaurantId]);
@@ -1666,6 +1731,16 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
 
                     console.log(`[Order #${orderId}] Marked Ready. Auto-generated Dispatch Code: ${dispatchCode}. Notified ${closestRiders.length} riders.`);
                 }
+            }
+
+            // Notify customer via Socket.IO
+            const [userRows] = await db.execute(`SELECT user_id FROM ${table} WHERE id = ?`, [orderId]);
+            if (userRows.length > 0) {
+                io.emit(`user_${userRows[0].user_id}_order_update`, {
+                    orderId: parseInt(orderId),
+                    status: 'ready_for_pickup',
+                    message: 'Waiting for rider'
+                });
             }
         }
 
@@ -1827,13 +1902,15 @@ apiRouter.post('/merchant/orders/:id/release', verifyToken, async (req, res) => 
 
         if (role !== 'merchant') return sendError(res, 403, 'Access denied');
 
-        // Verify order belongs to restaurant and get customer info
+        // Verify order belongs to restaurant and get customer info + restaurant location
         const [orderRows] = await db.execute(`
             SELECT o.id, o.user_id, o.dispatch_code, o.total_amount, o.rider_id,
                    u.username as customer_name, u.phone_number as customer_phone,
-                   u.address as customer_address, u.latitude as customer_lat, u.longitude as customer_lng
+                   u.address as customer_address, u.latitude as customer_lat, u.longitude as customer_lng,
+                   r.latitude as merchant_lat, r.longitude as merchant_lng
             FROM orders o
             JOIN users u ON o.user_id = u.id
+            JOIN restaurants r ON o.restaurant_id = r.id
             WHERE o.id = ? AND o.restaurant_id = ?
         `, [orderId, restaurantId]);
 
@@ -1842,12 +1919,26 @@ apiRouter.post('/merchant/orders/:id/release', verifyToken, async (req, res) => 
         const order = orderRows[0];
         const effectiveRiderId = riderId || order.rider_id;
 
+        // Calculate Delivery ETA (Merchant to Customer)
+        let deliveryEtaMinutes = 15; // default 15 mins for delivery
+        if (order.merchant_lat && order.merchant_lng && order.customer_lat && order.customer_lng) {
+            const distance = haversineDistance(
+                parseFloat(order.merchant_lat), parseFloat(order.merchant_lng),
+                parseFloat(order.customer_lat), parseFloat(order.customer_lng)
+            );
+            // 15km/h average speed in city delivery (congestion, parking, etc)
+            deliveryEtaMinutes = Math.ceil(distance / 0.25);
+            if (deliveryEtaMinutes < 5) deliveryEtaMinutes = 5;
+            if (deliveryEtaMinutes > 90) deliveryEtaMinutes = 90;
+        }
+        const deliveryEtaArrival = new Date(Date.now() + deliveryEtaMinutes * 60 * 1000);
+
         // Update order status to delivering
         await db.execute(`
             UPDATE orders 
-            SET status = 'delivering', updated_at = NOW()
+            SET status = 'delivering', delivery_eta_arrival = ?, updated_at = NOW()
             WHERE id = ?
-        `, [orderId]);
+        `, [deliveryEtaArrival, orderId]);
 
         // Clear dispatch code after release
         await db.execute('UPDATE orders SET dispatch_code = NULL WHERE id = ?', [orderId]);
@@ -1856,7 +1947,8 @@ apiRouter.post('/merchant/orders/:id/release', verifyToken, async (req, res) => 
         io.emit(`user_${order.user_id}_order_update`, {
             orderId,
             status: 'delivering',
-            message: 'Rider has picked up your order!'
+            message: 'Rider on the way to deliver',
+            delivery_eta_arrival: deliveryEtaArrival.toISOString()
         });
 
         // Notify rider with delivery destination
