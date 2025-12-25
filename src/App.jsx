@@ -24,11 +24,7 @@ import TransactionsView from './components/Transactions/TransactionsView';
 import CoinsView from './components/Coin/CoinsView';
 import CoinDisplay from './components/Coin/CoinDisplay';
 
-// Socket.IO connection
-const socket = io(window.location.origin, {
-  path: '/hungr/socket.io',
-  autoConnect: false
-});
+import socket from './config/socket';
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();

@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Loader, Clock, Star, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import socket from '../../config/socket';
+import ActiveOrderCard from './ActiveOrderCard';
 
-const HomeView = ({ restaurants, loading, setView, setActiveRestaurant }) => {
+const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) => {
   const navigate = useNavigate();
+  const [activeOrder, setActiveOrder] = useState(null);
   const [currentBanner, setCurrentBanner] = useState(0);
   const [premiumBanners, setPremiumBanners] = useState([]);
   const [bannersLoading, setBannersLoading] = useState(true);
@@ -71,6 +74,46 @@ const HomeView = ({ restaurants, loading, setView, setActiveRestaurant }) => {
     fetchPremiumRestaurants();
   }, []);
 
+  // Fetch active order and listen for updates
+  useEffect(() => {
+    const fetchActiveOrder = async () => {
+      if (!user?.id) return;
+      try {
+        const token = sessionStorage.getItem('accessToken');
+        const response = await fetch('/api/orders/active', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        if (data.success) {
+          setActiveOrder(data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch active order:', err);
+      }
+    };
+
+    fetchActiveOrder();
+
+    if (user?.id) {
+      const eventName = `user_${user.id}_order_update`;
+      console.log(`[HomeView] Listening for ${eventName}`);
+
+      socket.on(eventName, (data) => {
+        console.log('[HomeView] Order update received:', data);
+        if (['delivered', 'cancelled', 'completed'].includes(data.status)) {
+          setActiveOrder(null);
+        } else {
+          setActiveOrder(prev => prev ? { ...prev, status: data.status } : null);
+          // If no active order but we got an update, we might need to re-fetch or just ignore 
+          // usually it's better to re-fetch to get full details if prev was null
+          if (!activeOrder) fetchActiveOrder();
+        }
+      });
+
+      return () => socket.off(eventName);
+    }
+  }, [user?.id]);
+
   // Use premium banners if available, otherwise use defaults
   const banners = premiumBanners.length > 0 ? premiumBanners : defaultBanners;
 
@@ -98,6 +141,14 @@ const HomeView = ({ restaurants, loading, setView, setActiveRestaurant }) => {
 
   return (
     <div className="animate-in fade-in">
+      {/* Active Order Progress */}
+      {activeOrder && (
+        <ActiveOrderCard
+          order={activeOrder}
+          onClick={() => navigate('/transactions')}
+        />
+      )}
+
       {/* Category Grid */}
       <div className="grid grid-cols-4 gap-4 mb-6 place-items-center">
         {[

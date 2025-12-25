@@ -451,14 +451,17 @@ const pool = mysql.createPool({
             console.log("stores location columns might already exist.");
         }
 
-        // Add rider_id to orders table (for rider assignment)
+        // Add rider_id and payment_method to orders table (for rider assignment and payment status)
         try {
             await poolPromise.execute(`
                 ALTER TABLE orders ADD COLUMN IF NOT EXISTS rider_id INT DEFAULT NULL
             `);
-            console.log("orders.rider_id column checked/added.");
+            await poolPromise.execute(`
+                ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50) DEFAULT 'COD'
+            `);
+            console.log("orders schema updated (rider_id, payment_method).");
         } catch (e) {
-            console.log("orders.rider_id column might already exist.");
+            console.log("orders schema update might already exist.");
         }
 
         // Add last_location_update to riders table
@@ -587,6 +590,43 @@ app.get('/api/orders/history', verifyToken, async (req, res) => {
     }
 });
 
+// Get recent active order (for progress tracking)
+app.get('/api/orders/active', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Fetch most recent active food order
+        const [foodOrders] = await db.execute(`
+            SELECT o.id, o.status, o.total_amount, r.name as merchant_name, 'food' as type, o.created_at
+            FROM orders o
+            LEFT JOIN restaurants r ON o.restaurant_id = r.id
+            WHERE o.user_id = ? AND o.status NOT IN ('delivered', 'cancelled', 'completed')
+            ORDER BY o.created_at DESC LIMIT 1
+        `, [userId]);
+
+        // Fetch most recent active store order
+        const [storeOrders] = await db.execute(`
+            SELECT o.id, o.status, o.total_amount, s.name as merchant_name, 'store' as type, o.created_at
+            FROM store_paid_orders o
+            LEFT JOIN stores s ON o.store_id = s.id
+            WHERE o.user_id = ? AND o.status NOT IN ('delivered', 'cancelled', 'completed')
+            ORDER BY o.created_at DESC LIMIT 1
+        `, [userId]);
+
+        // Combine and pick the most recent one
+        const activeOrders = [...foodOrders, ...storeOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        if (activeOrders.length > 0) {
+            return sendSuccess(res, activeOrders[0]);
+        }
+
+        sendSuccess(res, null, 'No active orders found');
+    } catch (err) {
+        console.error('Active order fetch error:', err);
+        sendError(res, 500, 'Failed to fetch active order');
+    }
+});
+
 app.post('/api/orders', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -603,9 +643,16 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             const userLat = addrRows.length > 0 ? addrRows[0].latitude : 14.5995; // Default Manila
             const userLong = addrRows.length > 0 ? addrRows[0].longitude : 120.9842;
 
+            // Normalize payment method
+            let normalizedPayment = (paymentMethod || 'Wallet').toLowerCase();
+            if (normalizedPayment === 'cash') normalizedPayment = 'COD';
+            else if (normalizedPayment === 'wallet') normalizedPayment = 'Wallet';
+            else if (normalizedPayment === 'coins') normalizedPayment = 'Coins';
+            else normalizedPayment = normalizedPayment.toUpperCase();
+
             const [orderResult] = await db.execute(
                 `INSERT INTO store_paid_orders (user_id, store_id, total_amount, payment_method, delivery_address, status) VALUES (?, ?, ?, ?, ?, 'paid')`,
-                [userId, storeId, total, paymentMethod, deliveryAddress]
+                [userId, storeId, total, normalizedPayment, deliveryAddress]
             );
             const orderId = orderResult.insertId;
 
@@ -648,6 +695,7 @@ app.post('/api/orders', verifyToken, async (req, res) => {
                 id: orderId,
                 status: 'pending',
                 total_amount: total,
+                payment_method: normalizedPayment,
                 type: 'store',
                 customer_name: 'New Customer',
                 created_at: new Date(),
@@ -698,10 +746,17 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             const [addrRows] = await db.execute('SELECT * FROM user_addresses WHERE user_id = ? AND is_default = 1', [userId]);
             const deliveryAddress = addrRows.length > 0 ? addrRows[0].address : "User Location";
 
+            // Normalize payment method
+            let normalizedPayment = (paymentMethod || 'COD').toLowerCase();
+            if (normalizedPayment === 'cash') normalizedPayment = 'COD';
+            else if (normalizedPayment === 'wallet') normalizedPayment = 'Wallet';
+            else if (normalizedPayment === 'coins') normalizedPayment = 'Coins';
+            else normalizedPayment = normalizedPayment.toUpperCase();
+
             // Create Order
             const [resOrder] = await db.execute(
-                `INSERT INTO orders (user_id, restaurant_id, total_amount, status, created_at) VALUES (?, ?, ?, 'pending', NOW())`,
-                [userId, restaurantId, total || 0]
+                `INSERT INTO orders (user_id, restaurant_id, total_amount, payment_method, status, created_at) VALUES (?, ?, ?, ?, 'pending', NOW())`,
+                [userId, restaurantId, total || 0, normalizedPayment]
             );
 
             const orderId = resOrder.insertId;
@@ -723,6 +778,7 @@ app.post('/api/orders', verifyToken, async (req, res) => {
                 id: orderId,
                 status: 'pending',
                 total_amount: total,
+                payment_method: normalizedPayment,
                 type: 'food',
                 customer_name: 'Customer',
                 created_at: new Date(),
@@ -1127,13 +1183,17 @@ app.post('/api/riders/:id/orders/:orderId/complete', verifyToken, async (req, re
             }
 
             // Notify customer via Socket.IO
-            const [orderRows] = await db.execute('SELECT user_id FROM orders WHERE id = ?', [orderId]);
+            const [orderRows] = await db.execute('SELECT user_id, restaurant_id FROM orders WHERE id = ?', [orderId]);
             if (orderRows.length > 0) {
+                const { user_id, restaurant_id } = orderRows[0];
                 io.emit('order_completed', {
                     orderId,
-                    userId: orderRows[0].user_id,
+                    userId: user_id,
                     message: 'Your order has been delivered!'
                 });
+
+                // Notify Merchant
+                io.to(`merchant_${restaurant_id}`).emit('order_delivered', { orderId: parseInt(orderId) });
             }
         } else {
             // Update store order to completed
@@ -1144,6 +1204,12 @@ app.post('/api/riders/:id/orders/:orderId/complete', verifyToken, async (req, re
 
             if (result.affectedRows === 0) {
                 return sendError(res, 404, 'Order not found or not assigned to you');
+            }
+
+            // Notify Merchant
+            const [storeRows] = await db.execute('SELECT store_id FROM store_paid_orders WHERE id = ?', [orderId]);
+            if (storeRows.length > 0) {
+                io.to(`merchant_${storeRows[0].store_id}`).emit('order_delivered', { orderId: parseInt(orderId) });
             }
         }
 
@@ -1400,7 +1466,7 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
 
         try {
             const storeQuery = `
-                SELECT o.id, o.total_amount, o.status, o.created_at, 
+                SELECT o.id, o.total_amount, o.payment_method, o.status, o.created_at, 
                 u.username as customer_name, 
                 o.delivery_address,
                 JSON_ARRAYAGG(
@@ -1425,7 +1491,7 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
 
         // Fetch regular restaurant orders with accepted_at from prepared_orders
         const restQuery = `
-            SELECT o.id, o.total_amount, o.status, o.created_at, o.dispatch_code, o.rider_id,
+            SELECT o.id, o.total_amount, o.payment_method, o.status, o.created_at, o.dispatch_code, o.rider_id,
             u.username as customer_name, 
             u.address as delivery_address, 
             JSON_ARRAYAGG(
@@ -1603,6 +1669,16 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
         // If status is 'cancelled' (decline), insert into declined_orders
         if (status === 'cancelled') {
             await db.execute('INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, ?, ?)', [orderId, type || 'food', reason || 'Order Declined']);
+
+            // Notify customer via Socket.IO
+            const [userRows] = await db.execute(`SELECT user_id FROM ${table} WHERE id = ?`, [orderId]);
+            if (userRows.length > 0) {
+                io.emit(`user_${userRows[0].user_id}_order_update`, {
+                    orderId: parseInt(orderId),
+                    status: 'cancelled',
+                    message: 'Your order was declined by the merchant: ' + (reason || 'No reason provided')
+                });
+            }
         }
 
         // If status is 'preparing' (accept), insert into prepared_orders and notify riders
@@ -1893,6 +1969,105 @@ apiRouter.get('/merchant/orders/by-dispatch-code', verifyToken, async (req, res)
     }
 });
 
+// Resubmit Order (Unassign Rider)
+apiRouter.post('/merchant/orders/:id/unassign', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        const orderId = req.params.id;
+        const { type = 'food' } = req.body;
+
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+
+        const table = type === 'store' ? 'store_paid_orders' : 'orders';
+        const storeTable = type === 'store' ? 'stores' : 'restaurants';
+        const storeCol = type === 'store' ? 'store_id' : 'restaurant_id';
+
+        // 1. Verify ownership and get current state
+        const [rows] = await db.execute(`
+            SELECT o.id, o.rider_id, o.total_amount, o.dispatch_code,
+                   s.latitude, s.longitude, s.name as store_name, s.address as store_address,
+                   o.user_id
+            FROM ${table} o
+            JOIN ${storeTable} s ON o.${storeCol} = s.id
+            WHERE o.id = ? AND o.${storeCol} = ?
+        `, [orderId, restaurantId]);
+
+        if (rows.length === 0) return sendError(res, 404, 'Order not found');
+        const order = rows[0];
+
+        const oldRiderId = order.rider_id;
+        if (!oldRiderId) return sendError(res, 400, 'No rider assigned to this order');
+
+        // 2. Unassign Rider
+        // RESET: rider_id, delivery_eta_arrival, notification_started_at, notification_radius
+        await db.execute(`
+            UPDATE ${table} 
+            SET rider_id = NULL, 
+                delivery_eta_arrival = NULL, 
+                notification_started_at = NOW(), 
+                notification_radius = ?
+            WHERE id = ?
+        `, [NOTIFICATION_RADIUS_TIERS[0], orderId]);
+
+        // 3. Notify original rider that they are unassigned
+        io.emit(`rider_${oldRiderId}_unassigned`, {
+            orderId: parseInt(orderId),
+            message: 'You have been unassigned from this order by the merchant.'
+        });
+
+        // Also emit to the dedicated room if they are using it
+        io.to(`rider_${oldRiderId}`).emit('order_unassigned', {
+            orderId: parseInt(orderId),
+            message: 'You have been unassigned from this order by the merchant.'
+        });
+
+        // 4. Re-broadcast to nearby riders
+        const restLat = parseFloat(order.latitude);
+        const restLon = parseFloat(order.longitude);
+
+        const [onlineRiders] = await db.execute('SELECT id, user_id, name, current_latitude, current_longitude FROM riders WHERE is_online = 1 AND current_latitude IS NOT NULL');
+
+        if (onlineRiders.length > 0) {
+            const ridersWithDistance = onlineRiders.map(r => ({
+                ...r,
+                distance: haversineDistance(restLat, restLon, parseFloat(r.current_latitude), parseFloat(r.current_longitude))
+            })).sort((a, b) => a.distance - b.distance);
+
+            const initialRadius = NOTIFICATION_RADIUS_TIERS[0];
+            const closestRiders = ridersWithDistance
+                .filter(r => r.distance <= initialRadius)
+                .slice(0, 10);
+
+            closestRiders.forEach(rider => {
+                io.to(`rider_${rider.id}`).emit('new_order', {
+                    orderId: parseInt(orderId),
+                    orderType: type,
+                    restaurantId,
+                    restaurantName: order.store_name,
+                    restaurantAddress: order.store_address,
+                    totalAmount: parseFloat(order.total_amount).toFixed(2),
+                    dispatchCode: order.dispatch_code,
+                    message: `[RESUBMIT] Pickup at ${order.store_name} - ₱${parseFloat(order.total_amount).toFixed(2)}`,
+                    estimatedDistance: rider.distance.toFixed(2)
+                });
+            });
+        }
+
+        // 5. Notify customer
+        io.emit(`user_${order.user_id}_order_update`, {
+            orderId: parseInt(orderId),
+            status: 'searching_rider',
+            message: 'We are finding a new rider for your order.'
+        });
+
+        console.log(`[Order #${orderId}] Resubmitted by Merchant. Rider #${oldRiderId} unassigned.`);
+        sendSuccess(res, null, "Order resubmitted for other riders.");
+    } catch (err) {
+        console.error("Unassign error:", err);
+        sendError(res, 500, 'Failed to resubmit order');
+    }
+});
+
 // Release order to rider (mark as picked up)
 apiRouter.post('/merchant/orders/:id/release', verifyToken, async (req, res) => {
     try {
@@ -1992,41 +2167,50 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
     try {
         const { restaurantId, role } = req.user;
         const orderId = req.params.id;
-        const { type, declinedItems, acceptedItems } = req.body;
-        // acceptedItems is just an array of IDs kept (optional, we mainly strictly need declinedItems to remove)
+        const { type, declinedItems, acceptedItems, fullDecline = false, reason = 'Order Declined' } = req.body;
 
         if (role !== 'merchant') return sendError(res, 403, 'Access denied');
 
         const orderTable = type === 'store' ? 'store_paid_orders' : 'orders';
-        const itemTable = type === 'store' ? 'store_order_items' : 'order_items'; // store_order_items ID isPK? yes. order_items ID is PK? yes.
+        const itemTable = type === 'store' ? 'store_order_items' : 'order_items';
         const storeCol = type === 'store' ? 'store_id' : 'restaurant_id';
 
         // 1. Verify Order Ownership
-        const [orderCheck] = await db.execute(`SELECT id, total_amount FROM ${orderTable} WHERE id = ? AND ${storeCol} = ?`, [orderId, restaurantId]);
+        const [orderCheck] = await db.execute(`SELECT id, total_amount, user_id FROM ${orderTable} WHERE id = ? AND ${storeCol} = ?`, [orderId, restaurantId]);
         if (orderCheck.length === 0) return sendError(res, 404, 'Order not found');
+        const order = orderCheck[0];
 
-        // 2. Process Declined Items
+        // 2. Handle Full Decline
+        if (fullDecline) {
+            await db.execute(`UPDATE ${orderTable} SET status = 'cancelled' WHERE id = ?`, [orderId]);
+            await db.execute(
+                `INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, ?, ?)`,
+                [orderId, type || 'food', reason]
+            );
 
+            // Notify user
+            io.emit(`user_${order.user_id}_order_update`, {
+                orderId: parseInt(orderId),
+                status: 'cancelled',
+                message: 'Your order was declined by the merchant: ' + reason
+            });
+
+            return sendSuccess(res, { id: orderId, status: 'cancelled' }, "Order fully declined");
+        }
+
+        // 3. Process Declined Items
         if (declinedItems && declinedItems.length > 0) {
             for (const item of declinedItems) {
-                // item: { id, name, price, quantity, reason }
-
-                // A. Insert into declined_orders
                 await db.execute(
                     `INSERT INTO declined_orders (order_id, order_type, item_name, quantity, reason) VALUES (?, ?, ?, ?, ?)`,
                     [orderId, type || 'food', item.name, item.quantity, item.reason]
                 );
-
-                // B. Remove from order_items table
-                // NOTE: 'id' passed here must be the PRIMARY KEY of the item table (order_items.id), NOT the menu_item_id
                 await db.execute(`DELETE FROM ${itemTable} WHERE id = ?`, [item.id]);
             }
         }
 
-        // 3. Recalculate Total
-        // Column name differs: food orders use 'price_at_time', store orders use 'price'
+        // 4. Recalculate Total
         const priceCol = type === 'store' ? 'price' : 'price_at_time';
-
         let newTotal = 0;
         const [remainingItems] = await db.execute(`SELECT quantity, ${priceCol} as price FROM ${itemTable} WHERE order_id = ?`, [orderId]);
 
@@ -2034,15 +2218,27 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
             newTotal += (parseFloat(i.price) * i.quantity);
         });
 
-        // 4. Update Order
-        // If no items remain, status should be 'cancelled' (or all declined)
-        // Valid statuses: 'pending','preparing','delivering','delivered','cancelled'
+        // 5. Update Order
         let newStatus = 'preparing';
         if (remainingItems.length === 0) {
             newStatus = 'cancelled';
         }
 
         await db.execute(`UPDATE ${orderTable} SET total_amount = ?, status = ? WHERE id = ?`, [newTotal, newStatus, orderId]);
+
+        if (newStatus === 'cancelled') {
+            await db.execute(`INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, ?, 'All items declined')`, [orderId, type || 'food']);
+        } else {
+            // If some items remain, it's effectively accepted but partial
+            await db.execute('INSERT INTO prepared_orders (order_id, order_type, restaurant_id) VALUES (?, ?, ?)', [orderId, type || 'food', restaurantId]);
+        }
+
+        // Notify customer via Socket.IO
+        io.emit(`user_${order.user_id}_order_update`, {
+            orderId: parseInt(orderId),
+            status: newStatus,
+            message: newStatus === 'cancelled' ? 'Your order was fully declined' : 'Your order is being prepared (some items unavailable)'
+        });
 
         sendSuccess(res, { id: orderId, status: newStatus, newTotal, remainingCount: remainingItems.length }, "Order processed");
 
