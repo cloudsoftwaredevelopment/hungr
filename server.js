@@ -397,13 +397,15 @@ const pool = mysql.createPool({
             console.log("restaurants premium columns might already exist.");
         }
 
-        // Add delivery_eta_arrival to orders and store_paid_orders
+        // Add delivery_eta_arrival and instructions to orders and store_paid_orders
         try {
             await poolPromise.execute('ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_eta_arrival DATETIME DEFAULT NULL');
             await poolPromise.execute('ALTER TABLE store_paid_orders ADD COLUMN IF NOT EXISTS delivery_eta_arrival DATETIME DEFAULT NULL');
-            console.log("delivery_eta_arrival columns checked/added.");
+            await poolPromise.execute('ALTER TABLE orders ADD COLUMN IF NOT EXISTS instructions TEXT DEFAULT NULL');
+            await poolPromise.execute('ALTER TABLE store_paid_orders ADD COLUMN IF NOT EXISTS instructions TEXT DEFAULT NULL');
+            console.log("delivery_eta_arrival and instructions columns checked/added.");
         } catch (e) {
-            console.log("delivery_eta_arrival columns might already exist.");
+            console.log("columns might already exist.");
         }
 
         // Add location columns to restaurants (for Haversine rider dispatch)
@@ -494,13 +496,91 @@ const pool = mysql.createPool({
 })();
 
 const db = {
-    // Helper to return just the rows from a query
+    // Helper to return [rows, fields] from a query
     query: async (sql, params) => {
-        const [results] = await pool.promise().query(sql, params);
-        return results;
+        return await pool.promise().query(sql, params);
     },
-    execute: (sql, params) => pool.promise().execute(sql, params)
+    execute: async (sql, params) => {
+        return await pool.promise().execute(sql, params);
+    }
 };
+
+// ==========================================
+// ⏰ AUTO-CANCEL MONITOR (5 MINUTE TIMEOUT)
+// ==========================================
+async function autoCancelTimeoutOrders() {
+    try {
+        const timeoutMinutes = 5;
+
+        // 1. Food Orders
+        const [foodOrders] = await pool.promise().execute(`
+            SELECT id, user_id, restaurant_id 
+            FROM orders 
+            WHERE status = 'pending' 
+            AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)
+        `, [timeoutMinutes]);
+
+        for (const order of foodOrders) {
+            await pool.promise().execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", [order.id]);
+            await pool.promise().execute(
+                "INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, 'food', ?)",
+                [order.id, 'excessive wait time']
+            );
+
+            // Notify Customer
+            io.emit(`user_${order.user_id}_order_update`, {
+                orderId: parseInt(order.id),
+                status: 'cancelled',
+                message: 'Order cancelled: excessive wait time (merchant busy)'
+            });
+
+            // Notify Merchant to remove from board
+            io.to(`merchant_${order.restaurant_id}`).emit('order_cancelled', {
+                orderId: parseInt(order.id),
+                reason: 'excessive wait time'
+            });
+
+            console.log(`[Auto-Cancel] Food Order #${order.id} cancelled due to timeout.`);
+        }
+
+        // 2. Store Orders
+        const [storeOrders] = await pool.promise().execute(`
+            SELECT id, user_id, store_id 
+            FROM store_paid_orders 
+            WHERE status = 'pending' 
+            AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)
+        `, [timeoutMinutes]);
+
+        for (const order of storeOrders) {
+            await pool.promise().execute("UPDATE store_paid_orders SET status = 'cancelled' WHERE id = ?", [order.id]);
+            await pool.promise().execute(
+                "INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, 'store', ?)",
+                [order.id, 'excessive wait time']
+            );
+
+            // Notify Customer
+            io.emit(`user_${order.user_id}_order_update`, {
+                orderId: parseInt(order.id),
+                status: 'cancelled',
+                message: 'Order cancelled: excessive wait time (store busy)'
+            });
+
+            // Notify Merchant to remove from board
+            io.to(`merchant_${order.store_id}`).emit('order_cancelled', {
+                orderId: parseInt(order.id),
+                reason: 'excessive wait time'
+            });
+
+            console.log(`[Auto-Cancel] Store Order #${order.id} cancelled due to timeout.`);
+        }
+
+    } catch (err) {
+        console.error("Auto-cancel timeout error:", err);
+    }
+}
+
+// Start the monitor (runs every minute)
+setInterval(autoCancelTimeoutOrders, 60000);
 
 // --- HELPER FUNCTIONS ---
 const sendError = (res, statusCode, message, code = 'ERROR', sqlError = null) => {
@@ -597,24 +677,43 @@ app.get('/api/orders/active', verifyToken, async (req, res) => {
 
         // Fetch most recent active food order
         const [foodOrders] = await db.execute(`
-            SELECT o.id, o.status, o.total_amount, r.name as merchant_name, 'food' as type, o.created_at
+            SELECT o.id, o.status, o.total_amount, r.name as merchant_name, 'food' as type, o.created_at,
+            o.delivery_eta_arrival,
+            p.accepted_at,
+            JSON_ARRAYAGG(
+                JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time, 'preparation_time_min', m.preparation_time_min, 'preparation_time_sec', m.preparation_time_sec)
+            ) as items
             FROM orders o
             LEFT JOIN restaurants r ON o.restaurant_id = r.id
+            JOIN order_items oi ON o.id = oi.order_id
+            JOIN menu_items m ON oi.menu_item_id = m.id
+            LEFT JOIN prepared_orders p ON o.id = p.order_id AND p.order_type = 'food'
             WHERE o.user_id = ? AND o.status NOT IN ('delivered', 'cancelled', 'completed')
+            GROUP BY o.id
             ORDER BY o.created_at DESC LIMIT 1
         `, [userId]);
 
         // Fetch most recent active store order
         const [storeOrders] = await db.execute(`
-            SELECT o.id, o.status, o.total_amount, s.name as merchant_name, 'store' as type, o.created_at
+            SELECT o.id, o.status, o.total_amount, s.name as merchant_name, 'store' as type, o.created_at,
+            o.delivery_eta_arrival,
+            p.accepted_at,
+            JSON_ARRAYAGG(
+                JSON_OBJECT('name', i.product_name, 'quantity', i.quantity, 'price', i.price, 'preparation_time_min', 0, 'preparation_time_sec', 0)
+            ) as items
             FROM store_paid_orders o
             LEFT JOIN stores s ON o.store_id = s.id
+            JOIN store_order_items i ON o.id = i.order_id
+            LEFT JOIN prepared_orders p ON o.id = p.order_id AND p.order_type = 'store'
             WHERE o.user_id = ? AND o.status NOT IN ('delivered', 'cancelled', 'completed')
+            GROUP BY o.id
             ORDER BY o.created_at DESC LIMIT 1
         `, [userId]);
 
         // Combine and pick the most recent one
-        const activeOrders = [...foodOrders, ...storeOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        const activeOrders = [...foodOrders, ...storeOrders]
+            .map(row => ({ ...row, items: typeof row.items === 'string' ? JSON.parse(row.items) : row.items }))
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
         if (activeOrders.length > 0) {
             return sendSuccess(res, activeOrders[0]);
@@ -630,7 +729,7 @@ app.get('/api/orders/active', verifyToken, async (req, res) => {
 app.post('/api/orders', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { restaurantId, storeId, orderType, items, total, paymentMethod } = req.body;
+        const { restaurantId, storeId, orderType, items, total, paymentMethod, instructions } = req.body;
 
         if (orderType === 'store' && storeId) {
             // === HANDLING STORE ORDER ===
@@ -651,8 +750,8 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             else normalizedPayment = normalizedPayment.toUpperCase();
 
             const [orderResult] = await db.execute(
-                `INSERT INTO store_paid_orders (user_id, store_id, total_amount, payment_method, delivery_address, status) VALUES (?, ?, ?, ?, ?, 'paid')`,
-                [userId, storeId, total, normalizedPayment, deliveryAddress]
+                `INSERT INTO store_paid_orders (user_id, store_id, total_amount, payment_method, delivery_address, status, instructions) VALUES (?, ?, ?, ?, ?, 'paid', ?)`,
+                [userId, storeId, total, normalizedPayment, deliveryAddress, instructions || null]
             );
             const orderId = orderResult.insertId;
 
@@ -700,7 +799,8 @@ app.post('/api/orders', verifyToken, async (req, res) => {
                 customer_name: 'New Customer',
                 created_at: new Date(),
                 items: items,
-                delivery_address: deliveryAddress
+                delivery_address: deliveryAddress,
+                instructions: instructions || null
             });
 
             return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Order placed successfully");
@@ -755,8 +855,8 @@ app.post('/api/orders', verifyToken, async (req, res) => {
 
             // Create Order
             const [resOrder] = await db.execute(
-                `INSERT INTO orders (user_id, restaurant_id, total_amount, payment_method, status, created_at) VALUES (?, ?, ?, ?, 'pending', NOW())`,
-                [userId, restaurantId, total || 0, normalizedPayment]
+                `INSERT INTO orders (user_id, restaurant_id, total_amount, payment_method, status, created_at, instructions) VALUES (?, ?, ?, ?, 'pending', NOW(), ?)`,
+                [userId, restaurantId, total || 0, normalizedPayment, instructions || null]
             );
 
             const orderId = resOrder.insertId;
@@ -784,7 +884,8 @@ app.post('/api/orders', verifyToken, async (req, res) => {
                 created_at: new Date(),
                 restaurant_id: restaurantId,
                 items: items || [],
-                delivery_address: deliveryAddress || 'TBA'
+                delivery_address: deliveryAddress || 'TBA',
+                instructions: instructions || null
             });
 
             return sendSuccess(res, { orderId: orderId }, "Food Order placed successfully");
@@ -816,7 +917,7 @@ app.get('/api/pabili/stores', async (req, res) => {
         // FIX: Removed 'is_featured' to prevent SQL crashes. Just sort by rating.
         query += ' ORDER BY rating DESC';
 
-        const results = await db.query(query, params);
+        const [results] = await db.query(query, params);
         sendSuccess(res, results);
     } catch (err) {
         sendError(res, 500, 'DB Error', 'DB_ERROR', err);
@@ -855,7 +956,7 @@ app.post('/api/pabili/orders', verifyToken, async (req, res) => {
         // In a real app, we'd query 'riders' table. For now, we mock the matching logic.
         // Assuming 'riders' table has 'is_online' and 'wallet_balance' (joined from wallets logic if needed)
 
-        const riders = await db.query(`
+        const [riders] = await db.query(`
             SELECT r.id, r.name, w.balance 
             FROM riders r 
             JOIN wallets w ON r.user_id = w.user_id 
@@ -912,7 +1013,7 @@ app.get('/api/pabili/search', async (req, res) => {
             sql = `SELECT DISTINCT s.*, ( 6371 * acos( cos( radians(?) ) * cos( radians( s.latitude ) ) * cos( radians( s.longitude ) - radians(?) ) + sin( radians(?) ) * sin( radians( s.latitude ) ) ) ) AS distance FROM stores s LEFT JOIN products p ON s.id = p.store_id WHERE (s.name LIKE ? OR p.name LIKE ? OR p.description LIKE ?) HAVING distance < 4 ORDER BY distance ASC LIMIT 20`;
             params = [lat, long, lat, `%${q}%`, `%${q}%`, `%${q}%`];
         }
-        const results = await db.query(sql, params);
+        const [results] = await db.query(sql, params);
         sendSuccess(res, results);
     } catch (err) {
         sendError(res, 500, "DB Search Error", "DB_ERROR", err);
@@ -922,7 +1023,7 @@ app.get('/api/pabili/search', async (req, res) => {
 app.get('/api/stores/:id/products', async (req, res) => {
     try {
         const storeId = req.params.id;
-        const products = await db.query('SELECT * FROM products WHERE store_id = ?', [storeId]);
+        const [products] = await db.query('SELECT * FROM products WHERE store_id = ?', [storeId]);
         sendSuccess(res, products);
     } catch (err) {
         sendError(res, 500, "DB Error", "DB_ERROR", err);
@@ -986,7 +1087,7 @@ app.get('/api/riders/:id/orders', verifyToken, async (req, res) => {
         const { lat, lng, maxDistance = 10 } = req.query;
 
         // Fetch Store Paid Orders that are 'paid' (ready for pickup) and rider_id is NULL
-        const storeOrders = await db.query(`
+        const [storeOrders] = await db.query(`
             SELECT o.id, o.total_amount as fee, s.name as title, s.address as pickup_location, 
                    s.latitude as pickup_lat, s.longitude as pickup_lng, 'store' as order_type,
                    o.created_at
@@ -997,7 +1098,7 @@ app.get('/api/riders/:id/orders', verifyToken, async (req, res) => {
         `);
 
         // Fetch Food Orders that have dispatch_code (merchant notified riders) - includes preparing AND ready
-        const foodOrders = await db.query(`
+        const [foodOrders] = await db.query(`
             SELECT o.id, o.total_amount as fee, r.name as title, r.address as pickup_location,
                    r.latitude as pickup_lat, r.longitude as pickup_lng, 'food' as order_type,
                    o.created_at, o.dispatch_code, o.status
@@ -1096,6 +1197,10 @@ app.post('/api/riders/:id/orders/:orderId/accept', verifyToken, async (req, res)
 
         const etaArrival = new Date(Date.now() + etaMinutes * 60 * 1000);
 
+        // Store ETA in database so customer app can fetch it
+        const updateTable = orderType === 'food' ? 'orders' : 'store_paid_orders';
+        await db.execute(`UPDATE ${updateTable} SET delivery_eta_arrival = ? WHERE id = ?`, [etaArrival, orderId]);
+
         // Notify merchant via Socket.IO
         io.emit(`merchant_${restaurantId}_rider_accepted`, {
             orderId: parseInt(orderId),
@@ -1116,6 +1221,7 @@ app.post('/api/riders/:id/orders/:orderId/accept', verifyToken, async (req, res)
                 orderId: parseInt(orderId),
                 status: orderType === 'food' ? 'preparing' : 'assigned',
                 riderId: parseInt(riderId),
+                delivery_eta_arrival: etaArrival.toISOString(),
                 message: 'Rider picking up order and on Queue'
             });
         }
@@ -1186,9 +1292,9 @@ app.post('/api/riders/:id/orders/:orderId/complete', verifyToken, async (req, re
             const [orderRows] = await db.execute('SELECT user_id, restaurant_id FROM orders WHERE id = ?', [orderId]);
             if (orderRows.length > 0) {
                 const { user_id, restaurant_id } = orderRows[0];
-                io.emit('order_completed', {
-                    orderId,
-                    userId: user_id,
+                io.emit(`user_${user_id}_order_update`, {
+                    orderId: parseInt(orderId),
+                    status: 'delivered',
                     message: 'Your order has been delivered!'
                 });
 
@@ -1206,10 +1312,16 @@ app.post('/api/riders/:id/orders/:orderId/complete', verifyToken, async (req, re
                 return sendError(res, 404, 'Order not found or not assigned to you');
             }
 
-            // Notify Merchant
-            const [storeRows] = await db.execute('SELECT store_id FROM store_paid_orders WHERE id = ?', [orderId]);
-            if (storeRows.length > 0) {
-                io.to(`merchant_${storeRows[0].store_id}`).emit('order_delivered', { orderId: parseInt(orderId) });
+            // Notify customer and Merchant
+            const [storeOrderRows] = await db.execute('SELECT user_id, store_id FROM store_paid_orders WHERE id = ?', [orderId]);
+            if (storeOrderRows.length > 0) {
+                const { user_id, store_id } = storeOrderRows[0];
+                io.emit(`user_${user_id}_order_update`, {
+                    orderId: parseInt(orderId),
+                    status: 'delivered',
+                    message: 'Your order has been delivered!'
+                });
+                io.to(`merchant_${store_id}`).emit('order_delivered', { orderId: parseInt(orderId) });
             }
         }
 
@@ -1314,7 +1426,7 @@ const apiRouter = express.Router();
 apiRouter.post('/merchant/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        const results = await db.query('SELECT * FROM merchants WHERE email = ?', [email]);
+        const [results] = await db.query('SELECT * FROM merchants WHERE email = ?', [email]);
 
         if (results.length === 0) return sendError(res, 401, 'Invalid credentials');
         const merchant = results[0];
@@ -1469,8 +1581,9 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
                 SELECT o.id, o.total_amount, o.payment_method, o.status, o.created_at, 
                 u.username as customer_name, 
                 o.delivery_address,
+                o.instructions,
                 JSON_ARRAYAGG(
-                    JSON_OBJECT('name', i.product_name, 'quantity', i.quantity, 'price', i.price)
+                    JSON_OBJECT('name', i.product_name, 'quantity', i.quantity, 'price', i.price, 'preparation_time_min', 0, 'preparation_time_sec', 0)
                 ) as items,
                 o.rider_id,
                 p.accepted_at,
@@ -1494,8 +1607,9 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
             SELECT o.id, o.total_amount, o.payment_method, o.status, o.created_at, o.dispatch_code, o.rider_id,
             u.username as customer_name, 
             u.address as delivery_address, 
+            o.instructions, 
             JSON_ARRAYAGG(
-                JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time)
+                JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time, 'preparation_time_min', m.preparation_time_min, 'preparation_time_sec', m.preparation_time_sec)
             ) as items,
             p.accepted_at,
             r.name as rider_name
@@ -1510,7 +1624,7 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
             ORDER BY o.created_at DESC
         `;
 
-        const restRows = await db.query(restQuery, [restaurantId]);
+        const [restRows] = await db.query(restQuery, [restaurantId]);
 
         const restOrders = Array.isArray(restRows) ? restRows.map(row => ({
             ...row,
@@ -1639,6 +1753,9 @@ apiRouter.post('/merchant/verify-rider', verifyToken, async (req, res) => {
                 message: 'Rider on the way to deliver',
                 delivery_eta_arrival: deliveryEtaArrival.toISOString()
             });
+
+            // Notify Merchant to clear from their active board
+            io.to(`merchant_${restaurantId}`).emit('order_delivered', { orderId: parseInt(orderId) });
 
             sendSuccess(res, { verified: true }, "Rider Verified. Order handed over.");
         } else {
@@ -1809,13 +1926,14 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
                 }
             }
 
-            // Notify customer via Socket.IO
-            const [userRows] = await db.execute(`SELECT user_id FROM ${table} WHERE id = ?`, [orderId]);
+            // Notify customer via Socket.IO with ETA if available
+            const [userRows] = await db.execute(`SELECT user_id, delivery_eta_arrival FROM ${table} WHERE id = ?`, [orderId]);
             if (userRows.length > 0) {
                 io.emit(`user_${userRows[0].user_id}_order_update`, {
                     orderId: parseInt(orderId),
                     status: 'ready_for_pickup',
-                    message: 'Waiting for rider'
+                    message: 'Order is Ready! Waiting for rider to pick up.',
+                    delivery_eta_arrival: userRows[0].delivery_eta_arrival ? userRows[0].delivery_eta_arrival : null
                 });
             }
         }
@@ -2126,6 +2244,9 @@ apiRouter.post('/merchant/orders/:id/release', verifyToken, async (req, res) => 
             delivery_eta_arrival: deliveryEtaArrival.toISOString()
         });
 
+        // Notify Merchant to clear from their active board
+        io.to(`merchant_${restaurantId}`).emit('order_delivered', { orderId: parseInt(orderId) });
+
         // Notify rider with delivery destination
         const deliveryData = {
             orderId: parseInt(orderId),
@@ -2270,7 +2391,7 @@ apiRouter.put('/merchant/:id/update', verifyToken, async (req, res) => {
 
 apiRouter.get('/merchant/:id/menu', verifyToken, async (req, res) => {
     try {
-        const results = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? ORDER BY category, name', [req.user.restaurantId]);
+        const [results] = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? ORDER BY category, name', [req.user.restaurantId]);
         sendSuccess(res, results);
     } catch (err) {
         sendError(res, 500, 'DB Error');
@@ -2279,17 +2400,17 @@ apiRouter.get('/merchant/:id/menu', verifyToken, async (req, res) => {
 
 apiRouter.post('/merchant/menu/save', verifyToken, async (req, res) => {
     try {
-        const { id, restaurant_id, name, description, price, cost, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end } = req.body;
+        const { id, restaurant_id, name, description, price, cost, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end, preparation_time_min, preparation_time_sec } = req.body;
         if (req.user.restaurantId !== restaurant_id) return sendError(res, 403, "Unauthorized");
 
         const sql = id
-            ? `UPDATE menu_items SET name=?, description=?, price=?, cost=?, promotional_price=?, category=?, image_url=?, stock_quantity=?, is_available=?, food_type=?, cuisine_type=?, availability_start=?, availability_end=? WHERE id=? AND restaurant_id=?`
-            : `INSERT INTO menu_items (name, description, price, cost, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end, restaurant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            ? `UPDATE menu_items SET name=?, description=?, price=?, cost=?, promotional_price=?, category=?, image_url=?, stock_quantity=?, is_available=?, food_type=?, cuisine_type=?, availability_start=?, availability_end=?, preparation_time_min=?, preparation_time_sec=? WHERE id=? AND restaurant_id=?`
+            : `INSERT INTO menu_items (name, description, price, cost, promotional_price, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start, availability_end, preparation_time_min, preparation_time_sec, restaurant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         const params = id
-            ? [name, description, price, cost || 0, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, id, restaurant_id]
-            : [name, description, price, cost || 0, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, restaurant_id];
+            ? [name, description, price, cost || 0, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, preparation_time_min || 0, preparation_time_sec || 0, id, restaurant_id]
+            : [name, description, price, cost || 0, promotional_price || null, category, image_url, stock_quantity, is_available, food_type, cuisine_type, availability_start || null, availability_end || null, preparation_time_min || 0, preparation_time_sec || 0, restaurant_id];
 
-        const result = await db.query(sql, params);
+        const [result] = await db.query(sql, params);
         sendSuccess(res, { id: id || result.insertId }, "Item saved");
     } catch (err) {
         sendError(res, 500, "Save failed", "DB_ERROR", err);
@@ -2365,7 +2486,7 @@ apiRouter.get('/merchant/sales-history', verifyToken, async (req, res) => {
             LIMIT 1000
         `;
 
-        const salesRows = await db.query(salesQuery, params);
+        const [salesRows] = await db.query(salesQuery, params);
 
         // Process and compute profit for each order
         const salesData = salesRows.map(row => {
@@ -2449,7 +2570,7 @@ apiRouter.get('/merchant/:id/discounts', verifyToken, async (req, res) => {
         if (existing.length === 0) {
             await db.execute(`INSERT INTO store_discounts (restaurant_id, name, discount_type, value, is_active, is_system_default, requirements) VALUES (?, 'Senior Citizen', 'percentage', 20.00, 1, 1, 'Valid Senior Citizen ID'), (?, 'PWD', 'percentage', 20.00, 1, 1, 'Valid PWD ID')`, [restaurantId, restaurantId]);
         }
-        const results = await db.query('SELECT * FROM store_discounts WHERE restaurant_id = ? ORDER BY is_system_default DESC, name ASC', [restaurantId]);
+        const [results] = await db.query('SELECT * FROM store_discounts WHERE restaurant_id = ? ORDER BY is_system_default DESC, name ASC', [restaurantId]);
         sendSuccess(res, results);
     } catch (err) {
         sendError(res, 500, 'DB Error');
@@ -2463,7 +2584,7 @@ apiRouter.post('/merchant/discounts/save', verifyToken, async (req, res) => {
         const sql = id ? 'UPDATE store_discounts SET name=?, discount_type=?, value=?, is_active=?, requirements=? WHERE id=? AND restaurant_id=?' : 'INSERT INTO store_discounts (name, discount_type, value, is_active, requirements, restaurant_id) VALUES (?, ?, ?, ?, ?, ?)';
         const params = id ? [name, discount_type, value, is_active, requirements, id, restaurant_id] : [name, discount_type, value, is_active, requirements, restaurant_id];
 
-        const result = await db.query(sql, params);
+        const [result] = await db.query(sql, params);
         sendSuccess(res, { id: id || result.insertId });
     } catch (err) {
         sendError(res, 500, "Save failed");
@@ -2534,7 +2655,7 @@ apiRouter.get('/coins', verifyToken, async (req, res) => {
 apiRouter.get('/users/addresses', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        const results = await db.query('SELECT * FROM user_addresses WHERE user_id = ? ORDER BY created_at DESC', [userId]);
+        const [results] = await db.query('SELECT * FROM user_addresses WHERE user_id = ? ORDER BY created_at DESC', [userId]);
         sendSuccess(res, results);
     } catch (err) {
         sendError(res, 500, 'DB Error', 'DB_ERROR', err);
@@ -2555,7 +2676,7 @@ apiRouter.post('/users/addresses', verifyToken, async (req, res) => {
 
         const params = [userId, label, address, latitude || null, longitude || null, is_default ? 1 : 0];
 
-        const result = await db.query(sql, params);
+        const [result] = await db.query(sql, params);
 
         sendSuccess(res, { id: result.insertId, label, address }, "Address saved");
     } catch (err) {
@@ -2569,7 +2690,7 @@ apiRouter.delete('/users/addresses/:id', verifyToken, async (req, res) => {
         const addressId = req.params.id;
 
         // Security: Only delete if address belongs to user
-        const result = await db.query('DELETE FROM user_addresses WHERE id = ? AND user_id = ?', [addressId, userId]);
+        const [result] = await db.query('DELETE FROM user_addresses WHERE id = ? AND user_id = ?', [addressId, userId]);
 
         if (result.affectedRows === 0) return sendError(res, 404, "Address not found or unauthorized");
 
@@ -2624,7 +2745,7 @@ apiRouter.get('/users/location', verifyToken, async (req, res) => {
 apiRouter.post('/auth/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        const results = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const [results] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
 
         if (results.length === 0) {
             console.log(`[Login Failed] User not found: ${email}`);
@@ -2669,7 +2790,7 @@ apiRouter.get('/restaurants/:idOrSlug/menu', async (req, res) => {
         const restaurant = restaurantRows[0];
 
         // Fetch menu items
-        const menuItems = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? AND is_available = 1 ORDER BY category, name', [restaurant.id]);
+        const [menuItems] = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? AND is_available = 1 ORDER BY category, name', [restaurant.id]);
 
         sendSuccess(res, { restaurant, menu: menuItems });
     } catch (err) {
@@ -2709,7 +2830,7 @@ apiRouter.post('/restaurants/:id/watch', verifyToken, async (req, res) => {
 apiRouter.get('/restaurants/premium', async (req, res) => {
     try {
         // Get restaurants where is_premium = 1 AND premium_expires_at is in the future
-        const results = await db.query(`
+        const [results] = await db.query(`
             SELECT id, name, cuisine_type, image_url, rating, delivery_time_min, delivery_time_max,
                    premium_banner_image, premium_tagline
             FROM restaurants 
@@ -2740,7 +2861,7 @@ apiRouter.get('/restaurants/premium', async (req, res) => {
 
 apiRouter.get('/restaurants', async (req, res) => {
     try {
-        const results = await db.query('SELECT * FROM restaurants ORDER BY rating DESC');
+        const [results] = await db.query('SELECT * FROM restaurants ORDER BY rating DESC');
         sendSuccess(res, results);
     } catch (err) {
         sendError(res, 500, 'DB Error');

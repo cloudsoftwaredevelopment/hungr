@@ -6,6 +6,7 @@ const API_URL = '/api';
 const CartView = ({ cart, setCart, setView }) => {
     const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash', 'wallet', 'coins'
     const [balances, setBalances] = useState({ wallet: 0, coins: 0 });
+    const [instructions, setInstructions] = useState('');
     const [loading, setLoading] = useState(false);
     const [fetchingBalances, setFetchingBalances] = useState(true);
 
@@ -75,7 +76,8 @@ const CartView = ({ cart, setCart, setView }) => {
                     orderType: isStoreOrder ? 'store' : 'food',
                     items: validCartItems,
                     total,
-                    paymentMethod
+                    paymentMethod,
+                    instructions
                 })
             });
 
@@ -110,6 +112,7 @@ const CartView = ({ cart, setCart, setView }) => {
             </div>
 
             <div className="px-4">
+
                 {validCartItems.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mb-4">
@@ -210,7 +213,7 @@ const CartView = ({ cart, setCart, setView }) => {
                         </div>
 
                         {/* Bill Summary */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4">
                             <h3 className="font-bold text-gray-900 mb-3">Payment Summary</h3>
                             <div className="space-y-2 text-sm">
                                 <div className="flex justify-between text-gray-500">
@@ -226,6 +229,20 @@ const CartView = ({ cart, setCart, setView }) => {
                                     <span>₱{total.toFixed(2)}</span>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Special Instructions */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 font-geist">
+                            <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                                <ShoppingBag size={18} className="text-orange-500" />
+                                Instructions for Kitchen
+                            </h3>
+                            <textarea
+                                value={instructions}
+                                onChange={(e) => setInstructions(e.target.value)}
+                                placeholder='e.g. "No onions please", "I have a peanut allergy"'
+                                className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all min-h-[100px] resize-none"
+                            />
                         </div>
 
                         <button
