@@ -236,6 +236,13 @@
             color: #dc2626;
         }
 
+        .request-status.refund {
+            background: #fdf2f8;
+            color: #db2777;
+            border: 1px solid #fbcfe8;
+            font-weight: 800;
+        }
+
         .request-body {
             display: grid;
             grid-template-columns: 1fr 200px;
@@ -599,6 +606,18 @@
                 </button>
             </div>
 
+            <!-- Status Filter -->
+            <div
+                style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; background: white; padding: 12px; border-radius: 12px;">
+                <span style="font-weight: 700; color: var(--gray-700);">Filter Status:</span>
+                <select id="statusFilter" onchange="loadRequests()"
+                    style="padding: 8px 12px; border-radius: 8px; border: 2px solid var(--gray-200); font-weight: 600; outline: none; cursor: pointer;">
+                    <option value="pending">⏳ Pending</option>
+                    <option value="approved">✅ Approved History</option>
+                    <option value="rejected">❌ Rejected History</option>
+                </select>
+            </div>
+
             <div class="stats">
                 <div class="stat-card pending">
                     <div class="stat-value" id="pendingCount">0</div>
@@ -630,6 +649,18 @@
                     style="flex:1; padding: 12px; border: 2px solid #eab308; background: white; color: #eab308; border-radius: 8px; font-weight: 700; cursor: pointer;">
                     🏍️ Rider Coins
                 </button>
+            </div>
+
+            <!-- Coin Status Filter -->
+            <div
+                style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px; background: white; padding: 12px; border-radius: 12px;">
+                <span style="font-weight: 700; color: var(--gray-700);">Filter Status:</span>
+                <select id="coinStatusFilter" onchange="loadCoinRequests()"
+                    style="padding: 8px 12px; border-radius: 8px; border: 2px solid var(--eab308); font-weight: 600; outline: none; cursor: pointer;">
+                    <option value="pending">⏳ Pending</option>
+                    <option value="approved">✅ Approved History</option>
+                    <option value="rejected">❌ Rejected History</option>
+                </select>
             </div>
 
             <div class="stats">
@@ -1152,6 +1183,9 @@
             </div>
         </div>
 
+        <audio id="alarmSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+            preload="auto"></audio>
+
         <script>
             const API_BASE = '/api';
             let authToken = '';
@@ -1159,6 +1193,8 @@
             let currentRequests = [];
             let selectedRequestId = null;
             let walletType = 'merchant'; // 'merchant' or 'customer'
+            let lastPendingCount = 0;
+            let pollingInterval = null;
 
             // Switch between merchant and customer wallets
             function switchWalletType(type) {
@@ -1432,6 +1468,19 @@
                 document.getElementById('loginView').classList.add('hidden');
                 document.getElementById('dashboardView').classList.remove('hidden');
                 loadRequests();
+                startPolling();
+            }
+
+            function startPolling() {
+                if (pollingInterval) clearInterval(pollingInterval);
+                pollingInterval = setInterval(() => {
+                    const status = document.getElementById('statusFilter').value;
+                    const coinStatus = document.getElementById('coinStatusFilter').value;
+
+                    // Only poll if we are on the pending tab to avoid annoying alerts on history tabs
+                    if (status === 'pending') loadRequests();
+                    if (coinStatus === 'pending') loadCoinRequests();
+                }, 30000); // 30 seconds
             }
 
             function logout() {
@@ -1446,13 +1495,14 @@
             // Load Requests
             async function loadRequests() {
                 try {
+                    const status = document.getElementById('statusFilter').value;
                     let endpoint;
                     if (walletType === 'merchant') {
-                        endpoint = `${API_BASE}/admin/wallet/requests?status=pending`;
+                        endpoint = `${API_BASE}/admin/wallet/requests?status=${status}`;
                     } else if (walletType === 'customer') {
-                        endpoint = `${API_BASE}/admin/wallet/customer-requests?status=pending`;
+                        endpoint = `${API_BASE}/admin/wallet/customer-requests?status=${status}`;
                     } else {
-                        endpoint = `${API_BASE}/admin/wallet/rider-requests?status=pending`;
+                        endpoint = `${API_BASE}/admin/wallet/rider-requests?status=${status}`;
                     }
 
                     const res = await fetch(endpoint, {
@@ -1462,6 +1512,16 @@
 
                     if (data.success) {
                         currentRequests = data.data.requests;
+
+                        // Alarm logic for new pending requests
+                        if (status === 'pending') {
+                            if (currentRequests.length > lastPendingCount && lastPendingCount > 0) {
+                                const audio = document.getElementById('alarmSound');
+                                if (audio) audio.play().catch(e => console.log('Audio play blocked'));
+                            }
+                            lastPendingCount = currentRequests.length;
+                        }
+
                         renderRequests();
                         updateStats();
                     } else {
@@ -1477,11 +1537,13 @@
             function renderRequests() {
                 const container = document.getElementById('requestsContainer');
 
+                const status = document.getElementById('statusFilter').value;
+
                 if (currentRequests.length === 0) {
                     container.innerHTML = `
                     <div class="empty-state">
                         <h3>🎉 All caught up!</h3>
-                        <p>No pending ${walletType} requests to review</p>
+                        <p>No ${status} ${walletType} requests found</p>
                     </div>`;
                     return;
                 }
@@ -1509,7 +1571,10 @@
                 <div class="request-card" data-id="${req.id}">
                     <div class="request-header">
                         <span class="request-id">${icon} Request #${req.id}</span>
-                        <span class="request-status pending">PENDING</span>
+                        <div style="display: flex; gap: 8px;">
+                            ${req.request_type === 'refund' ? `<span class="request-status refund">REFUND</span>` : ''}
+                            <span class="request-status ${req.status}">${req.status.toUpperCase()}</span>
+                        </div>
                     </div>
                     <div class="request-body">
                         <div class="request-info">
@@ -1544,10 +1609,24 @@
                              onclick="showImage('/hungr/uploads/${req.proof_image_path}')"
                              onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2250%22>📄</text></svg>'">
                     </div>
+                    ${req.review_notes && req.status === 'pending' ? `
+                    <div style="background: #fff7ed; padding: 12px 20px; border-top: 1px solid #fed7aa; font-size: 13px; color: #9a3412;">
+                        <strong>Auto-Refund Info:</strong>
+                        <div style="white-space: pre-line; margin-top: 4px;">${req.review_notes}</div>
+                    </div>
+                    ` : ''}
+                    ${req.status === 'pending' ? `
                     <div class="request-actions">
                         <button class="action-btn reject" onclick="openRejectModal(${req.id}, '${name.replace(/'/g, "\\'")}')">Reject</button>
                         <button class="action-btn approve" onclick="openApproveModal(${req.id}, '${name.replace(/'/g, "\\'")}', ${req.amount})">Approve</button>
                     </div>
+                    ` : `
+                    <div style="background: var(--gray-50); padding: 12px 20px; border-top: 1px solid var(--gray-100); font-size: 13px; color: var(--gray-600);">
+                        ${req.reviewed_at ? `<div><strong>Reviewed At:</strong> ${new Date(req.reviewed_at).toLocaleString()}</div>` : ''}
+                        ${req.rejection_reason ? `<div style="color: var(--red); margin-top: 4px;"><strong>Reason:</strong> ${req.rejection_reason}</div>` : ''}
+                        ${req.review_notes ? `<div style="margin-top: 4px;"><strong>Notes:</strong> ${req.review_notes}</div>` : ''}
+                    </div>
+                    `}
                 </div>
             `}).join('');
             }
@@ -1703,9 +1782,10 @@
 
             async function loadCoinRequests() {
                 try {
+                    const status = document.getElementById('coinStatusFilter').value;
                     const endpoint = coinType === 'merchant'
-                        ? `${API_BASE}/admin/coins/merchant-requests?status=pending`
-                        : `${API_BASE}/admin/coins/rider-requests?status=pending`;
+                        ? `${API_BASE}/admin/coins/merchant-requests?status=${status}`
+                        : `${API_BASE}/admin/coins/rider-requests?status=${status}`;
 
                     const res = await fetch(endpoint, {
                         headers: { 'Authorization': `Bearer ${authToken}` }
@@ -1713,7 +1793,17 @@
                     const data = await res.json();
 
                     if (data.success) {
-                        coinRequests = data.requests;
+                        const newRequests = data.requests;
+
+                        // Alarm logic for new pending coin requests
+                        if (status === 'pending') {
+                            if (newRequests.length > coinRequests.length && coinRequests.length > 0) {
+                                const audio = document.getElementById('alarmSound');
+                                if (audio) audio.play().catch(e => console.log('Audio play blocked'));
+                            }
+                        }
+
+                        coinRequests = newRequests;
                         renderCoinRequests();
                         updateCoinStats();
                     }
@@ -1724,11 +1814,12 @@
 
             function renderCoinRequests() {
                 const container = document.getElementById('coinRequestsContainer');
+                const status = document.getElementById('coinStatusFilter').value;
                 if (coinRequests.length === 0) {
                     container.innerHTML = `<div class="empty-state">
                     <div style="font-size: 48px; margin-bottom: 12px;">🪙</div>
-                    <h3>No Pending Coin Requests</h3>
-                    <p>All ${coinType} coin purchases have been processed</p>
+                    <h3>No ${status} Coin Requests</h3>
+                    <p>No ${coinType} coin purchases found for this status</p>
                 </div>`;
                     return;
                 }
@@ -1745,6 +1836,7 @@
                             <div>
                                 <div class="merchant-name">${name}</div>
                                 <div class="merchant-email">${email}</div>
+                                <div style="font-size: 11px; margin-top:2px;" class="request-status ${req.status}">${req.status.toUpperCase()}</div>
                             </div>
                         </div>
                         <div class="request-amount" style="color: #b45309;">🪙 ${parseInt(req.amount).toLocaleString()}</div>
@@ -1756,10 +1848,17 @@
                         <div class="detail-row"><span class="detail-label">Requested:</span><span>${new Date(req.created_at).toLocaleString()}</span></div>
                     </div>
                     ${req.proof_image_path ? `<div style="margin-top: 12px;"><a href="/hungr/${req.proof_image_path}" target="_blank" style="color: #f97316; font-weight: 600;">📎 View Proof</a></div>` : ''}
+                    ${req.status === 'pending' ? `
                     <div class="request-actions">
                         <button class="btn btn-danger" onclick="rejectCoinRequest(${req.id})">Reject</button>
                         <button class="btn btn-success" onclick="approveCoinRequest(${req.id})">Approve</button>
                     </div>
+                    ` : `
+                    <div style="background: var(--gray-50); padding: 12px 20px; border-top: 1px solid var(--gray-100); font-size: 12px; color: var(--gray-600);">
+                        ${req.reviewed_at ? `<div><strong>Reviewed At:</strong> ${new Date(req.reviewed_at).toLocaleString()}</div>` : ''}
+                        ${req.rejection_reason ? `<div style="color: var(--red); margin-top: 4px;"><strong>Reason:</strong> ${req.rejection_reason}</div>` : ''}
+                    </div>
+                    `}
                 </div>`;
                 }).join('');
             }

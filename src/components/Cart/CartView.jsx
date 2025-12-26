@@ -7,6 +7,7 @@ const CartView = ({ cart, setCart, setView }) => {
     const [paymentMethod, setPaymentMethod] = useState('cash'); // 'cash', 'wallet', 'coins'
     const [balances, setBalances] = useState({ wallet: 0, coins: 0 });
     const [instructions, setInstructions] = useState('');
+    const [substitutionPreference, setSubstitutionPreference] = useState('call'); // 'cancel', 'call'
     const [loading, setLoading] = useState(false);
     const [fetchingBalances, setFetchingBalances] = useState(true);
 
@@ -77,7 +78,8 @@ const CartView = ({ cart, setCart, setView }) => {
                     items: validCartItems,
                     total,
                     paymentMethod,
-                    instructions
+                    instructions,
+                    substitutionPreference
                 })
             });
 
@@ -228,6 +230,28 @@ const CartView = ({ cart, setCart, setView }) => {
                                     <span>Total</span>
                                     <span>₱{total.toFixed(2)}</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Order Substitution Preference */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
+                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                                <ShoppingBag size={18} className="text-orange-500" />
+                                If an item is unavailable:
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => setSubstitutionPreference('cancel')}
+                                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-bold transition ${substitutionPreference === 'cancel' ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-gray-200 text-gray-500'}`}
+                                >
+                                    Cancel my order
+                                </button>
+                                <button
+                                    onClick={() => setSubstitutionPreference('call')}
+                                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-bold transition ${substitutionPreference === 'call' ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-gray-200 text-gray-500'}`}
+                                >
+                                    Call me
+                                </button>
                             </div>
                         </div>
 

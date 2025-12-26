@@ -18,7 +18,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import multer from 'multer';
 import fs from 'fs';
-import { registerWalletRoutes } from './walletRoutes.js';
+import { registerWalletRoutes, processCustomerPayment, getCustomerBalance } from './walletRoutes.js';
 
 dotenv.config();
 
@@ -55,6 +55,31 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
         Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
+}
+
+// NEW: Helper function to create a refund request
+async function createRefundRequest(db, userId, amount, payMethod, orderId, reason, merchantPhone) {
+    if (amount <= 0) return null;
+    const normalizedPayMethod = (payMethod || '').toLowerCase();
+    if (normalizedPayMethod !== 'wallet' && normalizedPayMethod !== 'coins') return null;
+
+    const refundKey = `refund_o${orderId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const reviewNotes = `Refund triggered by merchant action. \nReason: ${reason || 'N/A'}\nMerchant Contact: ${merchantPhone || 'Not available'}`;
+
+    await db.execute(`
+        INSERT INTO customer_topup_requests 
+        (user_id, request_type, amount, payment_method, payment_reference, status, idempotency_key, review_notes) 
+        VALUES (?, 'refund', ?, ?, ?, 'pending', ?, ?)
+    `, [
+        userId,
+        amount,
+        normalizedPayMethod,
+        `Order #${orderId} Refund`,
+        refundKey,
+        reviewNotes
+    ]);
+    console.log(`[Refund] Created refund request for Order #${orderId} (${normalizedPayMethod}): ₱${parseFloat(amount).toFixed(2)}`);
+    return refundKey;
 }
 
 // ==========================================
@@ -729,7 +754,28 @@ app.get('/api/orders/active', verifyToken, async (req, res) => {
 app.post('/api/orders', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { restaurantId, storeId, orderType, items, total, paymentMethod, instructions } = req.body;
+        const { restaurantId, storeId, orderType, items, total, paymentMethod, instructions, substitutionPreference } = req.body;
+
+        // NEW: Initial Balance Check if Wallet/Coins selected
+        const normalizedPaymentMethod = (paymentMethod || '').toLowerCase();
+        if (normalizedPaymentMethod === 'wallet' || normalizedPaymentMethod === 'coins') {
+            try {
+                const balance = await getCustomerBalance(db, userId, normalizedPaymentMethod);
+                const amountToDeduct = parseFloat(total);
+
+                if (isNaN(amountToDeduct) || amountToDeduct <= 0) {
+                    return sendError(res, 400, "Invalid order total amount");
+                }
+
+                if (balance < amountToDeduct) {
+                    return sendError(res, 400, `Insufficient ${normalizedPaymentMethod} balance. Required: ₱${amountToDeduct}, Available: ₱${balance}`, 'INSUFFICIENT_FUNDS');
+                }
+                console.log(`[Checkout] Balance check passed for user #${userId} (${normalizedPaymentMethod}): ₱${balance}`);
+            } catch (err) {
+                console.error(`[Checkout Check Error] ${err.message}`);
+                return sendError(res, 500, "Payment validation failed");
+            }
+        }
 
         if (orderType === 'store' && storeId) {
             // === HANDLING STORE ORDER ===
@@ -743,19 +789,29 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             const userLong = addrRows.length > 0 ? addrRows[0].longitude : 120.9842;
 
             // Normalize payment method
-            let normalizedPayment = (paymentMethod || 'Wallet').toLowerCase();
-            if (normalizedPayment === 'cash') normalizedPayment = 'COD';
+            let normalizedPayment = normalizedPaymentMethod;
+            if (normalizedPayment === 'cash' || !normalizedPayment) normalizedPayment = 'COD';
             else if (normalizedPayment === 'wallet') normalizedPayment = 'Wallet';
             else if (normalizedPayment === 'coins') normalizedPayment = 'Coins';
             else normalizedPayment = normalizedPayment.toUpperCase();
 
             const [orderResult] = await db.execute(
-                `INSERT INTO store_paid_orders (user_id, store_id, total_amount, payment_method, delivery_address, status, instructions) VALUES (?, ?, ?, ?, ?, 'paid', ?)`,
-                [userId, storeId, total, normalizedPayment, deliveryAddress, instructions || null]
+                `INSERT INTO store_paid_orders (user_id, store_id, total_amount, payment_method, delivery_address, status, instructions, substitution_preference) VALUES (?, ?, ?, ?, ?, 'paid', ?, ?)`,
+                [userId, storeId, total, normalizedPayment, deliveryAddress, instructions || null, substitutionPreference || 'call']
             );
             const orderId = orderResult.insertId;
 
-            // 2. Insert Items
+            // 1.5 DEBIT WALLET/COINS (Immutable Ledger Entry)
+            if (normalizedPaymentMethod === 'wallet' || normalizedPaymentMethod === 'coins') {
+                try {
+                    const payRes = await processCustomerPayment(db, userId, total, orderId, normalizedPaymentMethod);
+                    console.log(`[Payment] Deducted ${total} from user #${userId} ${normalizedPaymentMethod}. Transaction: ${payRes.transactionId}`);
+                } catch (payErr) {
+                    console.error(`[Payment Error] Post-order debit failed: ${payErr.message}`);
+                    return sendError(res, 500, "Payment processing failed. Please contact support.");
+                }
+            }
+
             // 2. Insert Items
             if (items && items.length > 0) {
                 const itemValues = items.map(i => [orderId, i.id, i.name, i.quantity, i.price || 0]);
@@ -796,11 +852,13 @@ app.post('/api/orders', verifyToken, async (req, res) => {
                 total_amount: total,
                 payment_method: normalizedPayment,
                 type: 'store',
-                customer_name: 'New Customer',
+                customer_name: customerName,
+                customer_phone: customerPhone,
                 created_at: new Date(),
                 items: items,
                 delivery_address: deliveryAddress,
-                instructions: instructions || null
+                instructions: instructions || null,
+                substitution_preference: substitutionPreference || 'call'
             });
 
             return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Order placed successfully");
@@ -847,19 +905,30 @@ app.post('/api/orders', verifyToken, async (req, res) => {
             const deliveryAddress = addrRows.length > 0 ? addrRows[0].address : "User Location";
 
             // Normalize payment method
-            let normalizedPayment = (paymentMethod || 'COD').toLowerCase();
-            if (normalizedPayment === 'cash') normalizedPayment = 'COD';
+            let normalizedPayment = normalizedPaymentMethod;
+            if (normalizedPayment === 'cash' || !normalizedPayment) normalizedPayment = 'COD';
             else if (normalizedPayment === 'wallet') normalizedPayment = 'Wallet';
             else if (normalizedPayment === 'coins') normalizedPayment = 'Coins';
             else normalizedPayment = normalizedPayment.toUpperCase();
 
             // Create Order
             const [resOrder] = await db.execute(
-                `INSERT INTO orders (user_id, restaurant_id, total_amount, payment_method, status, created_at, instructions) VALUES (?, ?, ?, ?, 'pending', NOW(), ?)`,
-                [userId, restaurantId, total || 0, normalizedPayment, instructions || null]
+                `INSERT INTO orders (user_id, restaurant_id, total_amount, payment_method, status, created_at, instructions, substitution_preference) VALUES (?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
+                [userId, restaurantId, total || 0, normalizedPayment, instructions || null, substitutionPreference || 'call']
             );
 
             const orderId = resOrder.insertId;
+
+            // DEBIT WALLET/COINS (Immutable Ledger Entry)
+            if (normalizedPaymentMethod === 'wallet' || normalizedPaymentMethod === 'coins') {
+                try {
+                    const payRes = await processCustomerPayment(db, userId, total, orderId, normalizedPaymentMethod);
+                    console.log(`[Payment] Deducted ${total} from user #${userId} ${normalizedPaymentMethod}. Transaction: ${payRes.transactionId}`);
+                } catch (payErr) {
+                    console.error(`[Payment Error] Post-order debit failed: ${payErr.message}`);
+                    return sendError(res, 500, "Payment processing failed. Please contact support.");
+                }
+            }
 
             // INSERT ORDER ITEMS
             if (items && items.length > 0) {
@@ -881,11 +950,13 @@ app.post('/api/orders', verifyToken, async (req, res) => {
                 payment_method: normalizedPayment,
                 type: 'food',
                 customer_name: 'Customer',
+                customer_phone: customerPhone,
                 created_at: new Date(),
                 restaurant_id: restaurantId,
                 items: items || [],
                 delivery_address: deliveryAddress || 'TBA',
-                instructions: instructions || null
+                instructions: instructions || null,
+                substitution_preference: substitutionPreference || 'call'
             });
 
             return sendSuccess(res, { orderId: orderId }, "Food Order placed successfully");
@@ -1580,8 +1651,10 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
             const storeQuery = `
                 SELECT o.id, o.total_amount, o.payment_method, o.status, o.created_at, 
                 u.username as customer_name, 
+                u.phone_number as customer_phone,
                 o.delivery_address,
                 o.instructions,
+                o.substitution_preference,
                 JSON_ARRAYAGG(
                     JSON_OBJECT('name', i.product_name, 'quantity', i.quantity, 'price', i.price, 'preparation_time_min', 0, 'preparation_time_sec', 0)
                 ) as items,
@@ -1605,9 +1678,10 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
         // Fetch regular restaurant orders with accepted_at from prepared_orders
         const restQuery = `
             SELECT o.id, o.total_amount, o.payment_method, o.status, o.created_at, o.dispatch_code, o.rider_id,
-            u.username as customer_name, 
             u.address as delivery_address, 
             o.instructions, 
+            u.phone_number as customer_phone,
+            o.substitution_preference,
             JSON_ARRAYAGG(
                 JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time, 'preparation_time_min', m.preparation_time_min, 'preparation_time_sec', m.preparation_time_sec)
             ) as items,
@@ -1783,14 +1857,22 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
 
         if (result.affectedRows === 0) return sendError(res, 404, 'Order not found');
 
-        // If status is 'cancelled' (decline), insert into declined_orders
         if (status === 'cancelled') {
             await db.execute('INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, ?, ?)', [orderId, type || 'food', reason || 'Order Declined']);
 
-            // Notify customer via Socket.IO
-            const [userRows] = await db.execute(`SELECT user_id FROM ${table} WHERE id = ?`, [orderId]);
-            if (userRows.length > 0) {
-                io.emit(`user_${userRows[0].user_id}_order_update`, {
+            // NEW: Automatic Refund Request for Wallet/Coins
+            const [orderRows] = await db.execute(`SELECT user_id, total_amount, payment_method FROM ${table} WHERE id = ?`, [orderId]);
+            if (orderRows.length > 0) {
+                const order = orderRows[0];
+
+                // Fetch merchant phone for admin contact
+                const [merchantRows] = await db.execute('SELECT phone_number FROM merchants WHERE restaurant_id = ?', [restaurantId]);
+                const merchantPhone = merchantRows[0]?.phone_number || 'N/A';
+
+                await createRefundRequest(db, order.user_id, order.total_amount, order.payment_method, orderId, reason, merchantPhone);
+
+                // Notify customer via Socket.IO
+                io.emit(`user_${order.user_id}_order_update`, {
                     orderId: parseInt(orderId),
                     status: 'cancelled',
                     message: 'Your order was declined by the merchant: ' + (reason || 'No reason provided')
@@ -2297,7 +2379,7 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
         const storeCol = type === 'store' ? 'store_id' : 'restaurant_id';
 
         // 1. Verify Order Ownership
-        const [orderCheck] = await db.execute(`SELECT id, total_amount, user_id FROM ${orderTable} WHERE id = ? AND ${storeCol} = ?`, [orderId, restaurantId]);
+        const [orderCheck] = await db.execute(`SELECT id, total_amount, user_id, payment_method FROM ${orderTable} WHERE id = ? AND ${storeCol} = ?`, [orderId, restaurantId]);
         if (orderCheck.length === 0) return sendError(res, 404, 'Order not found');
         const order = orderCheck[0];
 
@@ -2315,6 +2397,13 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
                 status: 'cancelled',
                 message: 'Your order was declined by the merchant: ' + reason
             });
+
+            // Fetch merchant phone for admin contact
+            const [merchantRows] = await db.execute('SELECT phone_number FROM merchants WHERE restaurant_id = ?', [restaurantId]);
+            const merchantPhone = merchantRows[0]?.phone_number || 'N/A';
+
+            // NEW: Automatic Refund Request
+            await createRefundRequest(db, order.user_id, order.total_amount, order.payment_method, orderId, reason, merchantPhone);
 
             return sendSuccess(res, { id: orderId, status: 'cancelled' }, "Order fully declined");
         }
@@ -2346,6 +2435,17 @@ apiRouter.post('/merchant/orders/:id/process-batch', verifyToken, async (req, re
         }
 
         await db.execute(`UPDATE ${orderTable} SET total_amount = ?, status = ? WHERE id = ?`, [newTotal, newStatus, orderId]);
+
+        // NEW: Partial Refund for Wallet/Coins
+        if (newTotal < order.total_amount) {
+            const refundAmount = order.total_amount - newTotal;
+
+            // Fetch merchant phone for admin contact
+            const [merchantRows] = await db.execute('SELECT phone_number FROM merchants WHERE restaurant_id = ?', [restaurantId]);
+            const merchantPhone = merchantRows[0]?.phone_number || 'N/A';
+
+            await createRefundRequest(db, order.user_id, refundAmount, order.payment_method, orderId, `Partial items declined. Original: ${order.total_amount}, New: ${newTotal}`, merchantPhone);
+        }
 
         if (newStatus === 'cancelled') {
             await db.execute(`INSERT INTO declined_orders (order_id, order_type, reason) VALUES (?, ?, 'All items declined')`, [orderId, type || 'food']);
@@ -2603,53 +2703,7 @@ apiRouter.delete('/merchant/discounts/:id', verifyToken, async (req, res) => {
 // Customer Auth
 // Customer Addresses
 
-apiRouter.get('/wallet', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        // Check if table exists first (or catch error)
-        try {
-            const [rows] = await db.execute('SELECT balance FROM wallets WHERE user_id = ?', [userId]);
-            const balance = rows.length > 0 ? rows[0].balance : 0.00;
-            sendSuccess(res, { balance });
-        } catch (e) {
-            // Table might not exist, return 0
-            sendSuccess(res, { balance: 0.00 });
-        }
-    } catch (err) {
-        sendError(res, 500, "DB Error", "DB_ERROR", err);
-    }
-});
-
-apiRouter.get('/coins', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user.id;
-
-        // Get coin balance
-        const [balanceRows] = await db.execute('SELECT balance FROM hungr_coins WHERE user_id = ?', [userId]);
-        const balance = balanceRows.length > 0 ? parseFloat(balanceRows[0].balance) : 0;
-
-        // Get coin transaction history
-        let transactions = [];
-        try {
-            const [txRows] = await db.execute(`
-                SELECT id, user_id, amount, entry_type, transaction_type, description, reference_id, created_at
-                FROM coin_transactions
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT 20
-            `, [userId]);
-            transactions = txRows;
-        } catch (e) {
-            // Table might not exist yet
-            console.log('coin_transactions table may not exist:', e.message);
-        }
-
-        sendSuccess(res, { balance, transactions });
-    } catch (err) {
-        console.error('Coins fetch error:', err);
-        sendError(res, 500, "DB Error", "DB_ERROR", err);
-    }
-});
+// Customer balance routes are now managed by walletRoutes.js
 
 // Real Address Persistence
 apiRouter.get('/users/addresses', verifyToken, async (req, res) => {

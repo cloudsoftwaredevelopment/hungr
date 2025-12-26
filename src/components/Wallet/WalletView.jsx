@@ -9,15 +9,11 @@ const WalletView = () => {
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [pendingRequests, setPendingRequests] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [showTopUp, setShowTopUp] = useState(false);
-  const [topUpAmount, setTopUpAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('gcash');
-  const [paymentReference, setPaymentReference] = useState('');
-  const [proofImage, setProofImage] = useState(null);
-  const [proofPreview, setProofPreview] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyTransactions, setHistoryTransactions] = useState([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const [fetchingHistory, setFetchingHistory] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -42,6 +38,36 @@ const WalletView = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchFullHistory = async (page = 1) => {
+    if (fetchingHistory) return;
+    setFetchingHistory(true);
+    try {
+      const token = sessionStorage.getItem('accessToken');
+      const response = await fetch(`${API_URL}/wallet/history?page=${page}&limit=20`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        if (page === 1) {
+          setHistoryTransactions(data.data.transactions);
+        } else {
+          setHistoryTransactions(prev => [...prev, ...data.data.transactions]);
+        }
+        setHasMoreHistory(data.data.transactions.length === 20);
+        setHistoryPage(page);
+      }
+    } catch (error) {
+      console.error("Failed to fetch history", error);
+    } finally {
+      setFetchingHistory(false);
+    }
+  };
+
+  const handleShowHistory = () => {
+    setShowHistory(true);
+    fetchFullHistory(1);
   };
 
   const handleImageChange = (e) => {
@@ -145,9 +171,17 @@ const WalletView = () => {
 
       {/* Transactions List */}
       <div className="px-4">
-        <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-          <History size={18} className="text-gray-500" /> Recent Transactions
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <History size={18} className="text-gray-500" /> Recent Transactions
+          </h3>
+          <button
+            onClick={handleShowHistory}
+            className="text-orange-600 text-xs font-bold hover:underline"
+          >
+            View History
+          </button>
+        </div>
 
         {loading ? (
           <div className="text-center py-10 text-gray-400">Loading...</div>
@@ -178,6 +212,71 @@ const WalletView = () => {
           </div>
         )}
       </div>
+
+      {/* Full History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-0 animate-in slide-in-from-bottom duration-300 h-[85vh] flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 rounded-t-3xl sm:rounded-t-2xl z-10">
+              <div>
+                <h3 className="text-xl font-bold">Transaction History</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Your complete wallet audit trail</p>
+              </div>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="w-10 h-10 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center hover:bg-gray-200 transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+              {historyTransactions.length === 0 && !fetchingHistory ? (
+                <div className="text-center py-20 text-gray-400">
+                  <History size={48} className="mx-auto mb-4 opacity-20" />
+                  <p>No transaction history found</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {historyTransactions.map((tx) => (
+                    <div key={tx.id} className="bg-gray-50 p-4 rounded-2xl flex items-center justify-between border border-gray-100 hover:border-orange-200 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm ${tx.entry_type === 'credit' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+                          {tx.entry_type === 'credit' ? <ArrowDownLeft size={22} /> : <ArrowUpRight size={22} />}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-gray-900 leading-tight">{tx.description || tx.transaction_type}</p>
+                          <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 uppercase tracking-wider font-semibold">
+                            <Clock size={10} /> {new Date(tx.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-black text-sm ${tx.entry_type === 'credit' ? 'text-green-600' : 'text-gray-900'}`}>
+                          {tx.entry_type === 'credit' ? '+' : '-'} ₱{parseFloat(tx.amount).toFixed(2)}
+                        </p>
+                        <p className="text-[9px] text-gray-400 mt-0.5">Bal: ₱{parseFloat(tx.running_balance).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {hasMoreHistory ? (
+                    <button
+                      onClick={() => fetchFullHistory(historyPage + 1)}
+                      disabled={fetchingHistory}
+                      className="w-full py-4 text-orange-600 text-sm font-bold hover:bg-orange-50 rounded-2xl transition border-2 border-dashed border-orange-200 mt-4 mb-6"
+                    >
+                      {fetchingHistory ? 'Loading...' : 'Load More Transactions'}
+                    </button>
+                  ) : historyTransactions.length > 0 && (
+                    <p className="text-center text-xs text-gray-400 py-6 font-medium italic">End of transaction history</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Up Modal */}
       {showTopUp && (

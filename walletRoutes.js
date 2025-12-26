@@ -23,14 +23,73 @@ if (!fs.existsSync(proofUploadsDir)) {
 }
 
 /**
- * Register wallet routes on the API router
- * @param {express.Router} apiRouter - Express router
- * @param {object} db - Database helper
- * @param {function} verifyToken - JWT verification middleware
- * @param {function} sendSuccess - Success response helper
- * @param {function} sendError - Error response helper
- * @param {object} io - Socket.io instance
+ * Helper to get customer balance from ledger
  */
+export async function getCustomerBalance(db, userId, paymentMethod) {
+    const table = paymentMethod === 'coins' ? 'customer_coin_ledger' : 'customer_wallet_ledger';
+    const [balanceRow] = await db.execute(`
+        SELECT 
+            COALESCE(SUM(CASE WHEN entry_type = 'credit' AND status = 'confirmed' THEN amount ELSE 0 END), 0) -
+            COALESCE(SUM(CASE WHEN entry_type = 'debit' AND status = 'confirmed' THEN amount ELSE 0 END), 0) AS balance
+        FROM ${table} WHERE user_id = ?
+    `, [userId]);
+    return parseFloat(balanceRow[0]?.balance || 0);
+}
+
+/**
+ * Helper to process a customer payment (debit) from wallet or coins
+ */
+export async function processCustomerPayment(db, userId, amount, orderId, paymentMethod) {
+    const table = paymentMethod === 'coins' ? 'customer_coin_ledger' : 'customer_wallet_ledger';
+    const transactionType = 'order_payment';
+
+    // 1. Calculate Balance from ledger
+    const [balanceRow] = await db.execute(`
+        SELECT 
+            COALESCE(SUM(CASE WHEN entry_type = 'credit' AND status = 'confirmed' THEN amount ELSE 0 END), 0) -
+            COALESCE(SUM(CASE WHEN entry_type = 'debit' AND status = 'confirmed' THEN amount ELSE 0 END), 0) AS balance
+        FROM ${table} WHERE user_id = ?
+    `, [userId]);
+
+    const balance = parseFloat(balanceRow[0]?.balance || 0);
+    if (balance < amount) {
+        throw new Error(`Insufficient ${paymentMethod} balance. Required: ₱${amount}, Available: ₱${balance}`);
+    }
+
+    // 2. Get previous ledger entry hash for chain
+    const [lastEntry] = await db.execute(`
+        SELECT entry_hash FROM ${table} 
+        WHERE user_id = ? ORDER BY id DESC LIMIT 1
+    `, [userId]);
+
+    const prevHash = lastEntry[0]?.entry_hash || '0'.repeat(64);
+    const idempotencyKey = `pay_${paymentMethod}_u${userId}_o${orderId || Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+    // 3. Create entry hash (userId:amount:type:key:prevHash)
+    const newBalance = balance - amount;
+    const hashData = `${userId}:${amount}:debit:${idempotencyKey}:${prevHash}`;
+    const entryHash = crypto.createHash('sha256').update(hashData).digest('hex');
+
+    // 4. Insert ledger entry
+    await db.execute(`
+        INSERT INTO ${table} 
+        (user_id, entry_type, transaction_type, amount, running_balance, 
+         reference_id, description, idempotency_key, prev_hash, entry_hash, status)
+        VALUES (?, 'debit', ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')
+    `, [
+        userId, transactionType, amount, newBalance,
+        orderId ? `order_${orderId}` : null,
+        `Payment for Order #${orderId || 'TBA'}`,
+        idempotencyKey, prevHash, entryHash
+    ]);
+
+    return {
+        success: true,
+        newBalance: newBalance.toFixed(2),
+        transactionId: idempotencyKey
+    };
+}
+
 export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, sendError, io) {
 
     // ==========================================
@@ -824,6 +883,42 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
     });
 
     /**
+     * GET /wallet/history - Get full transaction history for customer (paginated)
+     */
+    apiRouter.get('/wallet/history', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 20;
+            const offset = (page - 1) * limit;
+
+            const [transactions] = await db.execute(`
+                SELECT id, entry_type, transaction_type, amount, running_balance, 
+                       description, reference_id, status, created_at
+                FROM customer_wallet_ledger 
+                WHERE user_id = ? AND status = 'confirmed'
+                ORDER BY created_at DESC LIMIT ? OFFSET ?
+            `, [userId, limit, offset]);
+
+            const [countResult] = await db.execute(`
+                SELECT COUNT(*) as total FROM customer_wallet_ledger 
+                WHERE user_id = ? AND status = 'confirmed'
+            `, [userId]);
+
+            sendSuccess(res, {
+                transactions,
+                total: countResult[0].total,
+                page,
+                limit
+            });
+
+        } catch (err) {
+            console.error('Customer wallet history error:', err);
+            sendError(res, 500, 'Failed to fetch history', 'DB_ERROR', err);
+        }
+    });
+
+    /**
      * POST /wallet/topup - Submit customer top-up request
      */
     apiRouter.post('/wallet/topup', verifyToken, async (req, res) => {
@@ -963,22 +1058,26 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             }
 
             const request = requests[0];
+            const isRefund = request.request_type === 'refund';
+            const payMethod = (request.payment_method || '').toLowerCase();
+            const ledgerTable = (payMethod === 'coins' || payMethod === 'coin') ? 'customer_coin_ledger' : 'customer_wallet_ledger';
+            const transactionType = isRefund ? 'refund' : 'topup';
 
             // Get previous ledger entry hash for chain
             const [lastEntry] = await db.execute(`
-                SELECT entry_hash FROM customer_wallet_ledger 
+                SELECT entry_hash FROM ${ledgerTable} 
                 WHERE user_id = ? ORDER BY id DESC LIMIT 1
             `, [request.user_id]);
 
             const prevHash = lastEntry[0]?.entry_hash || '0'.repeat(64);
-            const idempotencyKey = `topup_${requestId}_${Date.now()}`;
+            const idempotencyKey = `${transactionType}_${requestId}_${Date.now()}`;
 
-            // Calculate new balance
+            // Calculate current balance
             const [balanceRow] = await db.execute(`
                 SELECT 
                     COALESCE(SUM(CASE WHEN entry_type = 'credit' AND status = 'confirmed' THEN amount ELSE 0 END), 0) -
                     COALESCE(SUM(CASE WHEN entry_type = 'debit' AND status = 'confirmed' THEN amount ELSE 0 END), 0) AS balance
-                FROM customer_wallet_ledger WHERE user_id = ?
+                FROM ${ledgerTable} WHERE user_id = ?
             `, [request.user_id]);
 
             const currentBalance = parseFloat(balanceRow[0]?.balance || 0);
@@ -990,14 +1089,14 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
 
             // Insert ledger entry
             await db.execute(`
-                INSERT INTO customer_wallet_ledger 
+                INSERT INTO ${ledgerTable} 
                 (user_id, entry_type, transaction_type, amount, running_balance, 
                  reference_id, description, idempotency_key, prev_hash, entry_hash, status)
-                VALUES (?, 'credit', 'topup', ?, ?, ?, ?, ?, ?, ?, 'confirmed')
+                VALUES (?, 'credit', ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')
             `, [
-                request.user_id, request.amount, newBalance,
-                `topup_request_${requestId}`,
-                `Top-up via ${request.payment_method}`,
+                request.user_id, transactionType, request.amount, newBalance,
+                `${transactionType}_request_${requestId}`,
+                isRefund ? `Refund for ${request.payment_reference || 'Order'}` : `Top-up via ${request.payment_method}`,
                 idempotencyKey, prevHash, entryHash
             ]);
 
@@ -1006,19 +1105,13 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
                 UPDATE customer_topup_requests 
                 SET status = 'approved', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?
                 WHERE id = ?
-            `, [adminId, notes || null, requestId]);
+            `, [adminId, notes || (isRefund ? 'Auto-refund approved' : 'Approved via admin'), requestId]);
 
-            console.log(`[Wallet] Admin #${adminId} approved customer top-up #${requestId}`);
-
-            sendSuccess(res, {
-                message: 'Customer top-up approved',
-                newBalance: newBalance.toFixed(2),
-                entryHash
-            });
+            sendSuccess(res, { requestId, newBalance: newBalance.toFixed(2) }, 'Request approved successfully');
 
         } catch (err) {
-            console.error('Customer approval error:', err);
-            sendError(res, 500, 'Failed to approve request', 'DB_ERROR', err);
+            console.error('Admin customer request approval error:', err);
+            sendError(res, 500, 'Failed to process approval', 'DB_ERROR', err);
         }
     });
 
@@ -1883,6 +1976,42 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
     });
 
     /**
+     * GET /coins/history - Get full coin transaction history (paginated)
+     */
+    apiRouter.get('/coins/history', verifyToken, async (req, res) => {
+        try {
+            const userId = req.user.id;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 20;
+            const offset = (page - 1) * limit;
+
+            const [transactions] = await db.execute(`
+                SELECT id, entry_type, transaction_type, amount, running_balance, 
+                       description, created_at
+                FROM customer_coin_ledger 
+                WHERE user_id = ?
+                ORDER BY created_at DESC LIMIT ? OFFSET ?
+            `, [userId, limit, offset]);
+
+            const [countResult] = await db.execute(`
+                SELECT COUNT(*) as total FROM customer_coin_ledger 
+                WHERE user_id = ?
+            `, [userId]);
+
+            sendSuccess(res, {
+                transactions,
+                total: countResult[0].total,
+                page,
+                limit
+            });
+
+        } catch (err) {
+            console.error('Customer coins history error:', err);
+            sendError(res, 500, 'Failed to fetch coins history', 'DB_ERROR', err);
+        }
+    });
+
+    /**
      * POST /coins/earn - System-triggered coin earning
      */
     apiRouter.post('/coins/earn', verifyToken, async (req, res) => {
@@ -1962,7 +2091,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
         try {
             const status = req.query.status || 'pending';
             const [requests] = await db.execute(`
-                SELECT r.*, m.business_name as merchant_name, m.email as merchant_email
+                SELECT r.*, m.name as merchant_name, m.email as merchant_email
                 FROM merchant_coin_topup_requests r
                 LEFT JOIN merchants m ON r.merchant_id = m.id
                 WHERE r.status = ?
