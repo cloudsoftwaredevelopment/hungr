@@ -14,6 +14,15 @@ const WalletView = () => {
   const [historyPage, setHistoryPage] = useState(1);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const [fetchingHistory, setFetchingHistory] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('gcash');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [proofImage, setProofImage] = useState(null);
+  const [proofPreview, setProofPreview] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -112,7 +121,7 @@ const WalletView = () => {
           paymentMethod,
           paymentReference,
           proofImage,
-          idempotencyKey: crypto.randomUUID()
+          idempotencyKey: `ref_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         })
       });
       const data = await response.json();
@@ -268,7 +277,7 @@ const WalletView = () => {
                     >
                       {fetchingHistory ? 'Loading...' : 'Load More Transactions'}
                     </button>
-                  ) : historyTransactions.length > 0 && (
+                  ) : (historyTransactions?.length || 0) > 0 && (
                     <p className="text-center text-xs text-gray-400 py-6 font-medium italic">End of transaction history</p>
                   )}
                 </div>

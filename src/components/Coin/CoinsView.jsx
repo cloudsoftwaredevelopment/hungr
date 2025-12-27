@@ -13,6 +13,7 @@ const CoinsView = ({ setView }) => {
     const [historyPage, setHistoryPage] = useState(1);
     const [hasMoreHistory, setHasMoreHistory] = useState(true);
     const [fetchingHistory, setFetchingHistory] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (user) {
@@ -29,7 +30,7 @@ const CoinsView = ({ setView }) => {
             const data = await response.json();
             if (data.success) {
                 setBalance(data.data.balance);
-                setTransactions(data.data.transactions);
+                setTransactions(data.data.transactions || []);
             }
         } catch (error) {
             console.error("Failed to fetch coins", error);
@@ -291,7 +292,7 @@ const CoinsView = ({ setView }) => {
                                         >
                                             {fetchingHistory ? '⌛ Loading more...' : 'Load More History'}
                                         </button>
-                                    ) : historyTransactions.length > 0 && (
+                                    ) : (historyTransactions?.length || 0) > 0 && (
                                         <div className="flex flex-col items-center py-8 opacity-40">
                                             <div className="w-1 h-8 bg-gradient-to-b from-yellow-400 to-transparent rounded-full mb-2"></div>
                                             <p className="text-[10px] font-black uppercase tracking-widest text-yellow-700">Journey Complete</p>

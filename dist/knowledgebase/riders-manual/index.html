@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HungrRiders | Riders Manual</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+        .hero-gradient { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
+        .card-hover:hover { transform: translateY(-5px); transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 leading-relaxed">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-50 glass border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="bike" class="text-white w-5 h-5"></i>
+                    </div>
+                    <span class="text-xl font-bold tracking-tight text-slate-900">Hungr<span class="text-orange-600">Riders</span></span>
+                </div>
+                <nav class="hidden md:flex space-x-8 text-sm font-medium text-slate-600">
+                    <a href="#getting-started" class="hover:text-orange-600 transition-colors">Getting Started</a>
+                    <a href="#delivery-flow" class="hover:text-orange-600 transition-colors">Delivery Flow</a>
+                    <a href="#wallet" class="hover:text-orange-600 transition-colors">Wallet & Earnings</a>
+                    <a href="#coins" class="hover:text-orange-600 transition-colors">Hungr Coins</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-gradient text-white py-20 px-4">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-4xl md:text-5xl font-extrabold mb-6 tracking-tight">Riders Manual</h1>
+            <p class="text-lg md:text-xl text-orange-50 opacity-90 font-medium">Delivering excellence to every doorstep. Your guide to success with Hungr.</p>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <main class="max-w-5xl mx-auto px-4 py-16">
+        
+        <!-- Getting Started -->
+        <section id="getting-started" class="mb-20">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="p-2 bg-orange-100 rounded-lg">
+                    <i data-lucide="play-circle" class="text-orange-600 w-6 h-6"></i>
+                </div>
+                <h2 class="text-3xl font-bold">Getting Started</h2>
+            </div>
+            
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 card-hover">
+                    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                        <i data-lucide="user-plus" class="text-blue-500 w-5 h-5"></i> Registration
+                    </h3>
+                    <ul class="space-y-4 text-slate-600">
+                        <li class="flex items-start gap-3">
+                            <span class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">1</span>
+                            <span>Click <strong>"Register here"</strong> on the login screen.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">2</span>
+                            <span>Upload a professional <strong>profile picture</strong> and valid <strong>Driver's License</strong>.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">3</span>
+                            <span>Specify your <strong>Vehicle Type</strong> (Motorcycle, Car, or Van) and Plate Number.</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 card-hover">
+                    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                        <i data-lucide="toggle-right" class="text-green-500 w-5 h-5"></i> Going Online
+                    </h3>
+                    <p class="text-slate-600 mb-4">Toggle the <strong>Go Online</strong> button to start finding orders. The system uses your <strong>GPS location</strong> to match you with nearby merchants.</p>
+                    <div class="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-xl">
+                        <p class="text-sm text-orange-800 font-medium">Keep your app open and GPS active for the best experience.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Delivery Flow -->
+        <section id="delivery-flow" class="mb-20">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="p-2 bg-orange-100 rounded-lg">
+                    <i data-lucide="truck" class="text-orange-600 w-6 h-6"></i>
+                </div>
+                <h2 class="text-3xl font-bold">The Delivery Lifecycle</h2>
+            </div>
+
+            <div class="space-y-6">
+                <div class="flex gap-6 items-start">
+                    <div class="hidden md:flex flex-col items-center">
+                        <div class="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg">1</div>
+                        <div class="w-1 px-0.5 bg-orange-100 h-24"></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex-1">
+                        <h4 class="font-bold text-lg mb-2">Accepting an Opportunity</h4>
+                        <p class="text-slate-600">When an order matches, review the fee and distance. Click <strong>Accept Order</strong> to begin.</p>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 items-start">
+                    <div class="hidden md:flex flex-col items-center">
+                        <div class="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg">2</div>
+                        <div class="w-1 px-0.5 bg-orange-100 h-32"></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex-1">
+                        <h4 class="font-bold text-lg mb-2">Merchant Pickup & Security</h4>
+                        <p class="text-slate-600 mb-4">Navigate to the merchant. Once there, show your <strong>6-digit Dispatch Code</strong>. This is required for the merchant to release the order.</p>
+                        <div class="bg-blue-50 p-4 rounded-xl flex items-center gap-3">
+                            <i data-lucide="shield-check" class="text-blue-600"></i>
+                            <span class="text-sm text-blue-800 font-semibold">The Dispatch Code ensures the right rider picks up the right order.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-6 items-start">
+                    <div class="hidden md:flex flex-col items-center">
+                        <div class="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg">3</div>
+                        <div class="w-1 px-0.5 bg-orange-100 h-24"></div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex-1">
+                        <h4 class="font-bold text-lg mb-2">Final Fulfillment</h4>
+                        <p class="text-slate-600">Once released, navigate to the customer. After handover, click <strong>Order Delivered</strong>. Your earnings are credited instantly.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Wallet & Earnings -->
+        <section id="wallet" class="mb-20">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="p-2 bg-orange-100 rounded-lg">
+                    <i data-lucide="wallet" class="text-orange-600 w-6 h-6"></i>
+                </div>
+                <h2 class="text-3xl font-bold">Wallet & Earnings</h2>
+            </div>
+
+            <div class="bg-slate-900 rounded-3xl p-8 md:p-12 text-white shadow-xl relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-8 opacity-10">
+                    <i data-lucide="landmark" class="w-48 h-48"></i>
+                </div>
+                
+                <div class="relative z-10 grid md:grid-cols-2 gap-12">
+                    <div>
+                        <h3 class="text-2xl font-bold mb-6">Withdrawal Process</h3>
+                        <p class="text-slate-400 mb-6 leading-relaxed">For security and verification, income withdrawals are processed in person at our Iloilo office.</p>
+                        <div class="bg-white/5 p-6 rounded-2xl border border-white/10">
+                            <p class="text-xs font-bold text-orange-400 uppercase tracking-widest mb-2">Office Address</p>
+                            <p class="text-lg font-semibold">Door 1 Rosalia Building,</p>
+                            <p class="text-slate-300">Infante Molo Work and Study Lounge Office,</p>
+                            <p class="text-slate-300">Iloilo City 5000</p>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-2xl font-bold mb-6">Top-Up Requests</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center gap-4 bg-white/5 p-4 rounded-xl">
+                                <i data-lucide="smartphone" class="text-blue-400"></i>
+                                <span>GCash Payments</span>
+                            </div>
+                            <div class="flex items-center gap-4 bg-white/5 p-4 rounded-xl">
+                                <i data-lucide="credit-card" class="text-green-400"></i>
+                                <span>Maya Payments</span>
+                            </div>
+                            <div class="flex items-center gap-4 bg-white/5 p-4 rounded-xl">
+                                <i data-lucide="building-2" class="text-amber-400"></i>
+                                <span>Bank Deposits</span>
+                            </div>
+                        </div>
+                        <p class="mt-4 text-sm text-slate-500 italic">*Always upload your proof of payment screenshot in the app.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Hungr Coins -->
+        <section id="coins" class="mb-20">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="p-2 bg-orange-100 rounded-lg">
+                    <i data-lucide="coins" class="text-orange-600 w-6 h-6"></i>
+                </div>
+                <h2 class="text-3xl font-bold">Hungr Coins 🪙</h2>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h4 class="font-bold text-orange-600 mb-2">What are they?</h4>
+                    <p class="text-sm text-slate-600">A digital reward system shared by riders, merchants, and the platform.</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h4 class="font-bold text-orange-600 mb-2">How to earn?</h4>
+                    <p class="text-sm text-slate-600">Earn from the system, from merchants, or buy them directly in-app.</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h4 class="font-bold text-orange-600 mb-2">Utility</h4>
+                    <p class="text-sm text-slate-600">Use them to buy Hungr food and products, or reward 5-star customers.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-50 border-t border-slate-200 py-12 px-4">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="flex items-center gap-2">
+                <div class="w-6 h-6 bg-slate-900 rounded flex items-center justify-center">
+                    <i data-lucide="bike" class="text-white w-4 h-4"></i>
+                </div>
+                <span class="font-bold text-slate-900">HungrRiders</span>
+            </div>
+            <p class="text-slate-400 text-sm">© 2025 NFC Revolution. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
