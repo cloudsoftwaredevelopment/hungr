@@ -144,30 +144,45 @@ function AppContent() {
 
       {/* --- HEADER --- */}
       {showMainHeader && (
-        <div className="bg-orange-600 text-white p-4 rounded-b-3xl shadow-lg sticky top-0 z-40">
-          <div className="flex items-center justify-between gap-3">
-            {currentView !== 'home' ? (
-              <button onClick={() => navigate('/')} className="p-1 hover:bg-white/20 rounded-full transition">
-                <ChevronLeft size={24} />
-              </button>
-            ) : (
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+        <div className="hero-gradient text-white p-5 rounded-b-[2.5rem] shadow-xl sticky top-0 z-40 transition-all duration-300">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3">
+              {currentView !== 'home' ? (
+                <button onClick={() => navigate('/')} className="p-2 hover:bg-white/20 rounded-full transition-all active:scale-95">
+                  <ChevronLeft size={24} />
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center border border-white/30 shadow-inner">
+                    <ShoppingBag size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-extrabold tracking-tight leading-none">Hungr</h1>
+                    <p className="text-[10px] text-orange-100 font-medium opacity-80 uppercase tracking-widest mt-0.5">Everything Delivered</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <CoinDisplay onClick={() => navigate('/coins')} />
+                <button onClick={() => user ? navigate('/profile') : navigate('/login')}
+                  className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center font-bold text-sm border border-white/30 shadow-lg transition-transform active:scale-90 relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  {user ? user.username[0].toUpperCase() : <User size={20} />}
+                </button>
+              </div>
+            </div>
+
+            {currentView === 'home' && (
+              <div className="relative group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-orange-600 transition-colors" size={18} />
                 <input
-                  type="text" placeholder="What are you craving?"
-                  className="w-full py-2 pl-9 pr-3 rounded-xl text-gray-800 text-sm focus:outline-none"
+                  type="text" placeholder="What are you craving today?"
+                  className="w-full h-12 pl-12 pr-4 rounded-2xl text-gray-800 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-white/30 transition-all shadow-lg bg-white"
                   value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                 />
               </div>
             )}
-
-            <div className="flex items-center gap-2">
-              <CoinDisplay onClick={() => navigate('/coins')} />
-              <button onClick={() => user ? navigate('/profile') : navigate('/login')}
-                className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-xs border border-white/30">
-                {user ? user.username[0].toUpperCase() : <User size={16} />}
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -192,13 +207,11 @@ function AppContent() {
           <Route path="/pabili" element={<Pabili />} />
           <Route path="/pabili/store/:id" element={<Pabili />} />
 
-          <Route path="/cart" element={
-            <div className="p-4"><CartView cart={cart} setCart={setCart} setView={handleSetView} /></div>
-          } />
+          <Route path="/cart" element={<CartView cart={cart} setCart={setCart} setView={handleSetView} />} />
 
           <Route path="/profile" element={
             <ProtectedRoute>
-              <div className="p-4"><ProfileView user={user} setView={handleSetView} /></div>
+              <ProfileView user={user} setView={handleSetView} />
             </ProtectedRoute>
           } />
 
@@ -212,8 +225,8 @@ function AppContent() {
 
           <Route path="/restaurant/:id" element={<RestaurantView addToCart={handleAddToCart} />} />
 
-          <Route path="/wallet" element={<ProtectedRoute><div className="p-4"><WalletView /></div></ProtectedRoute>} />
-          <Route path="/transactions" element={<ProtectedRoute><div className="p-4"><TransactionsView /></div></ProtectedRoute>} />
+          <Route path="/wallet" element={<ProtectedRoute><WalletView /></ProtectedRoute>} />
+          <Route path="/transactions" element={<ProtectedRoute><TransactionsView /></ProtectedRoute>} />
 
           <Route path="/rides" element={<RidesView setView={handleSetView} />} />
           <Route path="/stores" element={
@@ -226,9 +239,9 @@ function AppContent() {
             <StoreDetailView addToCart={handleAddToCart} />
           } />
 
-          <Route path="/coins" element={<ProtectedRoute><div className="p-4"><CoinsView setView={handleSetView} /></div></ProtectedRoute>} />
-          <Route path="/addresses" element={<ProtectedRoute><div className="p-4"><SavedAddresses setView={handleSetView} /></div></ProtectedRoute>} />
-          <Route path="/address-editor" element={<ProtectedRoute><div className="p-4"><AddressEditor setView={handleSetView} /></div></ProtectedRoute>} />
+          <Route path="/coins" element={<ProtectedRoute><CoinsView setView={handleSetView} /></ProtectedRoute>} />
+          <Route path="/addresses" element={<ProtectedRoute><SavedAddresses setView={handleSetView} /></ProtectedRoute>} />
+          <Route path="/address-editor" element={<ProtectedRoute><AddressEditor setView={handleSetView} /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

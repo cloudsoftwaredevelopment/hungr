@@ -189,7 +189,7 @@ const TransactionsView = () => {
   };
 
   return (
-    <div className="animate-in slide-in-from-right pb-24">
+    <div className="pb-32 bg-slate-50 min-h-screen">
       {/* Print Styles */}
       <style>
         {`
@@ -203,74 +203,101 @@ const TransactionsView = () => {
       </style>
 
       {/* Header Actions */}
-      <div className="flex items-center justify-between px-4 pt-4 mb-4">
-        <h2 className="text-xl font-bold">Order History</h2>
+      <div className="flex items-center justify-between p-5 bg-white/80 backdrop-blur-xl sticky top-0 z-50 border-b border-slate-100 shadow-sm">
+        <div>
+          <h2 className="text-xl font-black text-gray-900 tracking-tight">Order History</h2>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{orders.length} Total Bookings</p>
+        </div>
 
         <div className="flex gap-2 no-print">
           <button
             onClick={handlePrintPDF}
-            className="p-2 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200 transition"
+            className="p-2.5 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 transition-all active:scale-90"
             title="Print / Save as PDF"
           >
-            <Printer size={18} />
+            <Printer size={18} strokeWidth={2.5} />
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-3 py-2 bg-green-100 text-green-700 rounded-full text-xs font-bold hover:bg-green-200 transition"
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-black hover:bg-emerald-100 transition-all active:scale-95 border border-emerald-100 shadow-sm"
             title="Export to Excel (CSV)"
           >
-            <FileText size={14} /> Export
+            <FileText size={14} strokeWidth={3} /> EXPORT
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-center py-10 text-gray-400">Loading history...</div>
+        <div className="flex flex-col items-center justify-center py-20 bg-white m-5 rounded-[2.5rem] shadow-sm">
+          <div className="w-12 h-12 border-4 border-orange-100 rounded-full border-t-orange-600 animate-spin mb-4"></div>
+          <p className="text-sm font-bold text-slate-400">Loading your history...</p>
+        </div>
       ) : orders.length === 0 ? (
-        <div className="text-center py-20 bg-gray-50 m-4 rounded-xl">
-          <ShoppingBag size={48} className="mx-auto text-gray-300 mb-2" />
-          <p className="text-gray-500">No orders yet</p>
+        <div className="flex flex-col items-center justify-center py-24 m-5 bg-white rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center mb-6 shadow-inner">
+            <ShoppingBag size={48} className="text-slate-200" />
+          </div>
+          <h3 className="text-lg font-black text-gray-900 tracking-tight">No Orders Found</h3>
+          <p className="text-slate-400 font-medium text-sm mt-2">Time to start your first Hungr journey!</p>
         </div>
       ) : (
-        <div id="transaction-list" className="space-y-3 px-4">
+        <div id="transaction-list" className="space-y-4 p-5">
 
           {/* Header for Print View Only */}
-          <div className="hidden print:block mb-6">
-            <h1 className="text-2xl font-bold mb-2">Hungr Transaction Report</h1>
-            <p className="text-sm text-gray-500">Generated on: {new Date().toLocaleDateString()}</p>
-            <p className="text-sm text-gray-500">User: {user?.username || 'Guest'}</p>
+          <div className="hidden print:block mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center text-white font-black text-xl">H</div>
+              <h1 className="text-3xl font-black text-gray-900 tracking-tight">Hungr Transaction Report</h1>
+            </div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Generated On: {new Date().toLocaleDateString()}</p>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Customer: {user?.username || 'Guest'}</p>
           </div>
 
           {orders.map((order) => (
-            <div key={`${order.type}-${order.id}`} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between print:border-b print:shadow-none print:rounded-none">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${order.type === 'food' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'} print:hidden`}>
-                  {order.type === 'food' ? <ShoppingBag size={20} /> : <Bike size={20} />}
+            <div key={`${order.type}-${order.id}`} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-50 flex items-center justify-between group hover:shadow-xl transition-all duration-300 active:scale-[0.99] print:border-b print:shadow-none print:rounded-none">
+              <div className="flex items-center gap-4">
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center relative shadow-inner overflow-hidden flex-shrink-0 ${order.type === 'food' ? 'bg-orange-50 text-orange-600 border border-orange-100' : 'bg-blue-50 text-blue-600 border border-blue-100'} print:hidden`}>
+                  <div className="absolute inset-0 bg-white/20 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  {order.type === 'food' ? <ShoppingBag size={24} strokeWidth={2.5} /> : <Bike size={24} strokeWidth={2.5} />}
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-gray-900">{order.merchant_name || 'Store'}</h3>
-                  <p className="text-xs text-gray-500">{new Date(order.created_at).toLocaleDateString()} • {new Date(order.created_at).toLocaleTimeString()}</p>
-                  <p className="text-xs text-gray-400 capitalize print:block hidden">Type: {order.type}</p>
+                  <h3 className="font-black text-[15px] text-gray-900 leading-snug tracking-tight truncate max-w-[150px]">{order.merchant_name || 'Merchant Partner'}</h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-[11px] font-bold text-slate-400">{new Date(order.created_at).toLocaleDateString()}</p>
+                    <p className="text-[11px] font-bold text-slate-300">•</p>
+                    <p className="text-[11px] font-bold text-slate-400">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
                 </div>
               </div>
               <div className="text-right">
-                <p className="font-bold text-sm">₱{parseFloat(order.amount).toFixed(2)}</p>
-                <div className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 ${getStatusColor(order.status, order)} print:bg-transparent print:text-black print:p-0`}>
-                  <span className="print:hidden">{getStatusIcon(order.status, order)}</span>
-                  <span className="capitalize">{getStatusMessage(order.status, order)}</span>
+                <p className="font-black text-gray-900 text-lg tracking-tight">₱{parseFloat(order.amount).toFixed(2)}</p>
+                <div className={`inline-flex items-center gap-1.5 text-[10px] font-black px-3 py-1 rounded-full mt-1.5 shadow-sm border ${getStatusColor(order.status, order)} print:bg-transparent print:text-black print:p-0 print:border-none uppercase tracking-widest`}>
+                  <span className="print:hidden scale-90">{getStatusIcon(order.status, order)}</span>
+                  <span>{getStatusMessage(order.status, order)}</span>
                 </div>
                 {order.status === 'delivering' && order.delivery_eta_arrival && (
-                  <ETACountdown arrivalTime={order.delivery_eta_arrival} />
+                  <div className="mt-2 scale-90 origin-right">
+                    <ETACountdown arrivalTime={order.delivery_eta_arrival} />
+                  </div>
                 )}
               </div>
             </div>
           ))}
 
           {/* Summary Footer for Print */}
-          <div className="hidden print:block mt-8 pt-4 border-t border-gray-300">
-            <div className="flex justify-between font-bold text-lg">
-              <span>Total Orders: {orders.length}</span>
-              <span>Total Value: ₱{orders.reduce((sum, o) => sum + parseFloat(o.amount), 0).toFixed(2)}</span>
+          <div className="hidden print:block mt-12 py-6 border-t-4 border-slate-900">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Total Orders</p>
+                <p className="text-2xl font-black text-gray-900 tracking-tight">{orders.length}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Total Transaction Value</p>
+                <p className="text-3xl font-black text-orange-600 tracking-tight italic">₱{orders.reduce((sum, o) => sum + parseFloat(o.amount), 0).toFixed(2)}</p>
+              </div>
+            </div>
+            <div className="mt-12 text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] pt-8 border-t border-slate-100">
+              End of Transaction Report • NFC Revolution Inc.
             </div>
           </div>
         </div>

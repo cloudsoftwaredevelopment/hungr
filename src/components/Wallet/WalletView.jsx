@@ -148,33 +148,58 @@ const WalletView = () => {
   const presetAmounts = [100, 200, 500, 1000];
 
   return (
-    <div className="animate-in slide-in-from-right pb-24 relative min-h-screen bg-gray-50">
+    <div className="pb-32 font-sans bg-slate-50 min-h-screen">
+
+      {/* Header */}
+      <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-50 px-5 pt-6 pb-4 border-b border-slate-100 shadow-sm flex items-center gap-4">
+        <button
+          onClick={() => window.history.back()}
+          className="p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl text-slate-600 transition-all active:scale-95"
+        >
+          <ChevronLeft size={24} strokeWidth={3} />
+        </button>
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight leading-tight">
+            My <span className="text-orange-600 italic">Wallet</span>
+          </h1>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Manage your balance</p>
+        </div>
+      </div>
 
       {/* Wallet Card */}
-      <div className="bg-gradient-to-br from-orange-600 to-red-600 text-white p-6 pt-8 rounded-b-3xl shadow-xl mb-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-4 opacity-10">
-          <Wallet size={120} />
-        </div>
+      <div className="m-5 relative group">
+        <div className="absolute inset-0 bg-orange-600 rounded-[2.5rem] blur-2xl opacity-20 group-hover:opacity-30 transition-opacity"></div>
+        <div className="bg-gradient-to-br from-orange-600 to-red-600 text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden border border-white/10">
+          <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+            <Wallet size={160} strokeWidth={1} />
+          </div>
 
-        <p className="text-orange-100 text-sm font-medium mb-1">Total Balance</p>
-        <h1 className="text-4xl font-bold mb-2">₱ {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</h1>
+          <div className="relative z-10">
+            <p className="text-orange-100 text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Available Balance</p>
+            <h1 className="text-5xl font-black mb-4 tracking-tighter">
+              <span className="text-2xl mr-1 opacity-80">₱</span>
+              {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </h1>
 
-        {pendingRequests > 0 && (
-          <p className="text-orange-200 text-sm flex items-center gap-1 mb-4">
-            <Clock size={14} /> {pendingRequests} pending request(s)
-          </p>
-        )}
+            {pendingRequests > 0 && (
+              <div className="inline-flex items-center gap-2 bg-black/20 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 mb-6">
+                <Clock size={12} className="text-orange-300" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-orange-200">{pendingRequests} Pending Top-ups</span>
+              </div>
+            )}
 
-        <div className="flex gap-3 mt-4">
-          <button
-            onClick={() => setShowTopUp(true)}
-            className="flex-1 bg-white text-orange-600 py-3 rounded-xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 active:scale-95 transition"
-          >
-            <Plus size={18} /> Top Up
-          </button>
-          <button className="flex-1 bg-orange-700/50 text-white py-3 rounded-xl font-bold text-sm shadow-sm flex items-center justify-center gap-2 active:scale-95 transition backdrop-blur-sm opacity-50" disabled>
-            <ArrowUpRight size={18} /> Pay
-          </button>
+            <div className="flex gap-4 mt-2">
+              <button
+                onClick={() => setShowTopUp(true)}
+                className="flex-1 bg-white text-orange-600 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-orange-900/20 flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-orange-50"
+              >
+                <Plus size={18} strokeWidth={3} /> Top Up
+              </button>
+              <button className="flex-1 bg-white/20 backdrop-blur-md text-white/40 py-4 rounded-2xl font-black text-xs uppercase tracking-widest border border-white/10 flex items-center justify-center gap-2 cursor-not-allowed" disabled>
+                <ArrowUpRight size={18} strokeWidth={3} /> Transfer
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -201,19 +226,19 @@ const WalletView = () => {
             <p className="text-gray-400 text-sm mt-1">Top up to get started</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden px-2">
             {transactions.map((tx) => (
-              <div key={tx.id} className="p-4 border-b border-gray-100 last:border-b-0 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.type === 'topup' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                    {tx.type === 'topup' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
+              <div key={tx.id} className="p-5 border-b border-slate-50 last:border-b-0 flex items-center justify-between group hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner ${tx.type === 'topup' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                    {tx.type === 'topup' ? <ArrowDownLeft size={22} strokeWidth={2.5} /> : <ArrowUpRight size={22} strokeWidth={2.5} />}
                   </div>
                   <div>
-                    <p className="font-bold text-sm text-gray-900 capitalize">{tx.description || tx.type}</p>
-                    <p className="text-xs text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</p>
+                    <p className="font-black text-sm text-gray-900 tracking-tight leading-tight uppercase">{tx.description || tx.type}</p>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{new Date(tx.created_at).toLocaleDateString()}</p>
                   </div>
                 </div>
-                <span className={`font-bold text-sm ${tx.type === 'topup' ? 'text-green-600' : 'text-gray-900'}`}>
+                <span className={`font-black text-base tracking-tight ${tx.type === 'topup' ? 'text-emerald-600' : 'text-gray-900'}`}>
                   {tx.type === 'topup' ? '+' : '-'} ₱{parseFloat(tx.amount).toFixed(2)}
                 </span>
               </div>

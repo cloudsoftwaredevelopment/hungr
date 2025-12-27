@@ -18,50 +18,52 @@ export default function FoodView({ restaurants = [], setActiveRestaurant }) {
     });
 
     return (
-        <div className="pb-24 font-sans bg-gray-50 min-h-screen">
+        <div className="pb-32 font-sans bg-slate-50 min-h-screen">
 
             {/* --- HEADER --- */}
-            <div className="bg-white sticky top-0 z-30 px-4 py-3 shadow-sm border-b border-gray-100 flex flex-col gap-3">
+            <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-50 px-5 pt-6 pb-4 border-b border-slate-100 shadow-sm flex flex-col gap-5">
 
-                {/* Navigation Row (Back Button Added) */}
-                <div className="flex items-center gap-3">
+                {/* Navigation and Title */}
+                <div className="flex items-center gap-4">
                     <button
                         onClick={() => navigate('/')}
-                        className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 transition-colors"
+                        className="p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl text-slate-600 transition-all active:scale-95"
                     >
-                        <ChevronLeft size={24} />
+                        <ChevronLeft size={24} strokeWidth={3} />
                     </button>
-                    <div className="flex-1 text-center pr-10">
-                        {/* pr-10 balances the back button width to center the title perfectly */}
-                        <h1 className="text-xl font-black text-gray-800 tracking-tight">
-                            ORDER <span className="text-orange-600">FOOD</span>
+                    <div>
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight leading-tight">
+                            Hungr <span className="text-orange-600 italic">Food</span>
                         </h1>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Pick your craving</p>
                     </div>
                 </div>
 
                 {/* Search Bar */}
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Search className="text-gray-400" size={18} />
+                <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-1.5 flex items-center pointer-events-none z-10">
+                        <div className="w-11 h-11 flex items-center justify-center">
+                            <Search className="text-slate-400 group-focus-within:text-orange-600 transition-colors" size={20} strokeWidth={2.5} />
+                        </div>
                     </div>
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full bg-gray-100 text-gray-800 rounded-xl py-3 pl-10 pr-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition-all placeholder:text-gray-400"
-                        placeholder="Craving something specific?"
+                        className="w-full bg-slate-50 text-gray-800 rounded-2xl py-4 pl-12 pr-6 text-sm font-black focus:outline-none focus:ring-4 focus:ring-orange-600/10 focus:bg-white transition-all placeholder:text-slate-400 border-none shadow-inner"
+                        placeholder="Search for restaurants or dishes..."
                     />
                 </div>
 
                 {/* Categories */}
-                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar -mx-5 px-5">
                     {categories.map((cat) => (
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${activeCategory === cat
-                                ? 'bg-orange-600 text-white border-orange-600 shadow-md'
-                                : 'bg-white text-gray-500 border-gray-200 hover:border-orange-200 hover:text-orange-600'
+                            className={`px-5 py-2.5 rounded-2xl text-xs font-black whitespace-nowrap transition-all border-2 active:scale-95 ${activeCategory === cat
+                                ? 'bg-orange-600 text-white border-orange-600 shadow-lg shadow-orange-600/20'
+                                : 'bg-white text-slate-500 border-slate-50 hover:border-orange-200 hover:text-orange-600 shadow-sm'
                                 }`}
                         >
                             {cat}
@@ -86,24 +88,24 @@ export default function FoodView({ restaurants = [], setActiveRestaurant }) {
                                 <div
                                     key={restaurant.id}
                                     onClick={() => navigate(`/restaurant/${restaurant.id}`)}
-                                    className={`bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 group cursor-pointer active:scale-[0.98] transition-all ${isClosed ? 'opacity-60' : ''}`}
+                                    className={`bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-50 group cursor-pointer active:scale-[0.98] transition-all duration-300 hover:shadow-xl ${isClosed ? 'opacity-60' : ''}`}
                                 >
                                     {/* Image */}
-                                    <div className="h-32 bg-gray-200 relative overflow-hidden">
+                                    <div className="h-32 bg-slate-100 relative overflow-hidden">
                                         <img
                                             src={restaurant.image_url}
                                             alt={restaurant.name}
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                                             onError={(e) => e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+'}
                                         />
                                         {/* Rating Badge */}
-                                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] font-bold shadow-sm flex items-center gap-0.5">
+                                        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-2 py-1 rounded-xl text-[10px] font-black shadow-lg flex items-center gap-1 border border-white/50">
                                             <Star size={10} className="text-orange-500 fill-orange-500" /> {restaurant.rating}
                                         </div>
                                         {/* CLOSED Badge */}
                                         {isClosed && (
-                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                                <span className="bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center backdrop-blur-sm">
+                                                <span className="bg-red-600 text-white text-[10px] font-black px-4 py-1.5 rounded-xl shadow-2xl uppercase tracking-widest border border-red-500/50">
                                                     CLOSED
                                                 </span>
                                             </div>
@@ -111,11 +113,16 @@ export default function FoodView({ restaurants = [], setActiveRestaurant }) {
                                     </div>
 
                                     {/* Content */}
-                                    <div className="p-3">
-                                        <h3 className="font-bold text-gray-800 text-sm leading-tight line-clamp-1">{restaurant.name}</h3>
-                                        <p className="text-gray-500 text-[10px] mt-0.5 line-clamp-1">
-                                            {restaurant.cuisine_type} • {restaurant.delivery_time_min}m
-                                        </p>
+                                    <div className="p-4">
+                                        <h3 className="font-black text-gray-900 text-sm leading-tight line-clamp-1 tracking-tight group-hover:text-orange-600 transition-colors uppercase">{restaurant.name}</h3>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">{restaurant.cuisine_type}</span>
+                                            <span className="text-slate-200">•</span>
+                                            <div className="flex items-center gap-1 text-orange-600">
+                                                <Clock size={10} strokeWidth={3} />
+                                                <span className="text-[10px] font-black italic">{restaurant.delivery_time_min}m</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )

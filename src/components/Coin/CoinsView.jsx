@@ -99,93 +99,83 @@ const CoinsView = ({ setView }) => {
     };
 
     return (
-        <div className="animate-in slide-in-from-right pb-24 relative min-h-screen bg-gray-50">
+        <div className="pb-32 font-sans bg-slate-50 min-h-screen">
+
+            {/* Header */}
+            <div className="bg-white/80 backdrop-blur-xl sticky top-0 z-50 px-5 pt-6 pb-4 border-b border-slate-100 shadow-sm flex items-center gap-4">
+                <button
+                    onClick={() => setView('home')}
+                    className="p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl text-slate-600 transition-all active:scale-95"
+                >
+                    <ChevronLeft size={24} strokeWidth={3} />
+                </button>
+                <div>
+                    <h1 className="text-2xl font-black text-gray-900 tracking-tight leading-tight">
+                        Hungr <span className="text-orange-600 italic">Coins</span>
+                    </h1>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">Collect & Redeem Rewards</p>
+                </div>
+            </div>
 
             {/* Coin Card */}
-            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-6 pt-12 rounded-b-3xl shadow-xl mb-6 relative overflow-hidden">
+            <div className="m-5 relative group">
+                <div className="absolute inset-0 bg-yellow-500 rounded-[2.5rem] blur-2xl opacity-20 group-hover:opacity-30 transition-opacity"></div>
+                <div className="bg-gradient-to-br from-yellow-400 via-orange-500 to-orange-600 text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden border border-white/10">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+                        <Coins size={160} strokeWidth={1} />
+                    </div>
 
-                {/* Back Button */}
-                <div className="absolute top-4 left-4 z-20">
-                    <button
-                        onClick={() => setView('home')}
-                        className="p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition shadow-sm"
-                    >
-                        <ChevronLeft size={24} />
-                    </button>
-                </div>
+                    <div className="relative z-10">
+                        <p className="text-yellow-100 text-[10px] font-black uppercase tracking-widest mb-1 opacity-80">Accumulated Points</p>
+                        <h1 className="text-5xl font-black mb-4 tracking-tighter flex items-center gap-3">
+                            <span className="text-4xl">🪙</span>
+                            {loading ? '...' : balance}
+                        </h1>
 
-                <div className="absolute top-0 right-0 p-4 opacity-20">
-                    <Coins size={120} />
-                </div>
+                        <p className="text-[11px] font-bold text-yellow-50/80 mb-6 leading-relaxed max-w-[200px]">
+                            Your loyalty Pays Off. Redeem these for exclusive vouchers and discounts!
+                        </p>
 
-                <p className="text-yellow-100 text-sm font-medium mb-1 mt-4">Hungr Rewards</p>
-                <h1 className="text-4xl font-bold mb-2 flex items-center gap-2">
-                    <span className="text-5xl">🪙</span> {loading ? '...' : balance}
-                </h1>
-                <p className="text-xs text-yellow-50 opacity-90 mb-6">
-                    Use coins to redeem exclusive food vouchers.
-                </p>
-
-                <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3 flex justify-between items-center cursor-pointer hover:bg-white/30 transition">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-white p-2 rounded-full text-orange-500">
-                            <Gift size={20} />
-                        </div>
-                        <div className="text-left">
-                            <p className="text-xs font-bold">Rewards Shop</p>
-                            <p className="text-[10px] opacity-80">Tap to redeem</p>
+                        <div className="bg-white/20 backdrop-blur-md rounded-2xl p-4 flex justify-between items-center cursor-pointer hover:bg-white/30 transition-all border border-white/10 group/btn active:scale-[0.98]">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-white w-10 h-10 rounded-xl flex items-center justify-center text-orange-600 shadow-lg">
+                                    <Gift size={20} strokeWidth={2.5} />
+                                </div>
+                                <div className="text-left">
+                                    <p className="text-xs font-black uppercase tracking-widest">Rewards Shop</p>
+                                    <p className="text-[10px] font-bold text-yellow-50/70">Exclusive Deals Waiting</p>
+                                </div>
+                            </div>
+                            <ArrowRight size={18} strokeWidth={3} className="text-yellow-100 group-hover/btn:translate-x-1 transition-transform" />
                         </div>
                     </div>
-                    <ArrowRight size={16} />
                 </div>
             </div>
 
             {/* Ways to Earn */}
-            <div className="px-4 mb-6">
-                <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                    <TrendingUp size={18} className="text-orange-600" /> Ways to Earn
+            <div className="px-5 mb-8">
+                <h3 className="font-black text-gray-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                    <TrendingUp size={18} className="text-orange-600" strokeWidth={3} /> Ways to Earn
                 </h3>
-                <div className="grid grid-cols-2 gap-3">
-                    <button
-                        onClick={() => handleSimulateEarn('order_complete')}
-                        className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-left hover:border-orange-200 transition active:scale-95"
-                    >
-                        <div className="bg-blue-100 w-8 h-8 rounded-lg flex items-center justify-center text-blue-600 mb-2">
-                            <ShoppingBag size={16} />
-                        </div>
-                        <p className="text-xs font-bold text-gray-900">Complete Order</p>
-                        <p className="text-[10px] text-gray-500">+10 Coins</p>
-                    </button>
-                    <button
-                        onClick={() => handleSimulateEarn('bulk_order')}
-                        className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-left hover:border-orange-200 transition active:scale-95"
-                    >
-                        <div className="bg-purple-100 w-8 h-8 rounded-lg flex items-center justify-center text-purple-600 mb-2">
-                            <Gift size={16} />
-                        </div>
-                        <p className="text-xs font-bold text-gray-900">Bulk Order (5+)</p>
-                        <p className="text-[10px] text-gray-500">+50 Coins</p>
-                    </button>
-                    <button
-                        onClick={() => handleSimulateEarn('wallet_payment')}
-                        className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-left hover:border-orange-200 transition active:scale-95"
-                    >
-                        <div className="bg-green-100 w-8 h-8 rounded-lg flex items-center justify-center text-green-600 mb-2">
-                            <Coins size={16} />
-                        </div>
-                        <p className="text-xs font-bold text-gray-900">Pay with Wallet</p>
-                        <p className="text-[10px] text-gray-500">+5 Coins</p>
-                    </button>
-                    <button
-                        onClick={() => handleSimulateEarn('advance_booking')}
-                        className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm text-left hover:border-orange-200 transition active:scale-95"
-                    >
-                        <div className="bg-yellow-100 w-8 h-8 rounded-lg flex items-center justify-center text-yellow-600 mb-2">
-                            <Star size={16} />
-                        </div>
-                        <p className="text-xs font-bold text-gray-900">Advance Booking</p>
-                        <p className="text-[10px] text-gray-500">+15 Coins</p>
-                    </button>
+                <div className="grid grid-cols-2 gap-4">
+                    {[
+                        { id: 'order_complete', label: 'Order Complete', coins: '+10', icon: ShoppingBag, color: 'blue' },
+                        { id: 'bulk_order', label: 'Bulk Order (5+)', coins: '+50', icon: Gift, color: 'purple' },
+                        { id: 'wallet_payment', label: 'Wallet Payment', coins: '+5', icon: Coins, color: 'emerald' },
+                        { id: 'advance_booking', label: 'Advance Booking', coins: '+15', icon: Star, color: 'amber' }
+                    ].map((action) => (
+                        <button
+                            key={action.id}
+                            onClick={() => handleSimulateEarn(action.id)}
+                            className="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm text-left hover:shadow-xl hover:border-orange-200 transition-all duration-300 active:scale-95 group"
+                        >
+                            <div className={`bg-${action.color}-50 w-11 h-11 rounded-2xl flex items-center justify-center text-${action.color}-600 mb-4 shadow-inner group-hover:scale-110 transition-transform`}>
+                                <action.icon size={20} strokeWidth={2.5} />
+                            </div>
+                            <p className="text-xs font-black text-gray-900 tracking-tight leading-tight uppercase">{action.label}</p>
+                            <p className="text-[10px] font-black text-orange-600 mt-1 uppercase italic">{action.coins} Coins</p>
+                        </button>
+                    ))}
                 </div>
             </div>
 
