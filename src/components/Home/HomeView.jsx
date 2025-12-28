@@ -244,51 +244,48 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
       </div>
 
       {/* Restaurant List */}
-      <div className="grid grid-cols-1 gap-5 pb-24">
+      <div className="grid grid-cols-2 gap-4 pb-24 px-1">
         {loading ? (
-          <div className="flex justify-center py-12">
+          <div className="col-span-2 flex justify-center py-12">
             <div className="relative">
-              <div className="w-12 h-12 border-4 border-orange-100 rounded-full"></div>
-              <div className="w-12 h-12 border-4 border-orange-600 rounded-full border-t-transparent animate-spin absolute top-0 left-0"></div>
+              <div className="w-10 h-10 border-4 border-orange-100 rounded-full"></div>
+              <div className="w-10 h-10 border-4 border-orange-600 rounded-full border-t-transparent animate-spin absolute top-0 left-0"></div>
             </div>
           </div>
         ) : (
           restaurants.map(r => (
             <div
               key={r.id}
-              className="group bg-white rounded-[2rem] shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer border border-slate-100 active:scale-[0.98]"
+              className="group bg-white rounded-[2rem] shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer border border-slate-100 active:scale-[0.98] flex flex-col"
               onClick={() => {
                 if (setActiveRestaurant) setActiveRestaurant(r);
                 navigate(`/restaurant/${r.id}`);
               }}
             >
-              <div className="h-48 bg-gray-100 relative overflow-hidden">
+              <div className="h-32 bg-gray-100 relative overflow-hidden">
                 <img
                   src={r.image_url || "/api/placeholder/400/200"}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   alt={r.name}
                 />
-                <div className="absolute top-4 left-4 flex gap-2">
-                  <div className="bg-white/95 backdrop-blur-md px-3 py-1 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-1.5 text-orange-600 border border-orange-100">
-                    <Clock size={12} /> {r.delivery_time_min}-{r.delivery_time_max} mins
+                <div className="absolute top-2.5 left-2.5">
+                  <div className="bg-white/95 backdrop-blur-md px-2 py-0.5 rounded-full text-[9px] font-black shadow-sm flex items-center gap-1 text-orange-600 border border-orange-100 uppercase tracking-tighter">
+                    <Clock size={10} /> {r.delivery_time_min}m
                   </div>
                 </div>
-                <div className="absolute top-4 right-4">
-                  <div className="bg-emerald-500 text-white px-3 py-1 rounded-full text-[11px] font-black shadow-lg flex items-center gap-1 border border-emerald-400">
-                    <Star size={10} fill="white" /> {r.rating}
+                <div className="absolute top-2.5 right-2.5">
+                  <div className="bg-emerald-500 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-lg flex items-center gap-0.5 border border-emerald-400">
+                    <Star size={8} fill="white" /> {r.rating}
                   </div>
                 </div>
               </div>
-              <div className="p-5">
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-extrabold text-lg text-gray-900 line-clamp-1">{r.name}</h3>
+              <div className="p-3.5 flex-1 flex flex-col justify-between">
+                <div>
+                  <h3 className="font-black text-sm text-gray-900 line-clamp-1 leading-tight mb-1">{r.name}</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{r.cuisine_type}</p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                  <span>{r.cuisine_type}</span>
-                  <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                  <span>1.2km</span>
-                  <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                  <span className="text-emerald-600 font-bold">Free Delivery</span>
+                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-50">
+                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">Free Delivery</span>
                 </div>
               </div>
             </div>
