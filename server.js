@@ -756,6 +756,11 @@ app.post('/api/orders', verifyToken, async (req, res) => {
         const userId = req.user.id;
         const { restaurantId, storeId, orderType, items, total, paymentMethod, instructions, substitutionPreference } = req.body;
 
+        // Fetch user details for real-time notifications to merchants
+        const [[user]] = await db.execute('SELECT username, phone_number FROM users WHERE id = ?', [userId]);
+        const customerName = user ? user.username : 'Customer';
+        const customerPhone = user ? user.phone_number : 'N/A';
+
         // NEW: Initial Balance Check if Wallet/Coins selected
         const normalizedPaymentMethod = (paymentMethod || '').toLowerCase();
         if (normalizedPaymentMethod === 'wallet' || normalizedPaymentMethod === 'coins') {
@@ -949,7 +954,7 @@ app.post('/api/orders', verifyToken, async (req, res) => {
                 total_amount: total,
                 payment_method: normalizedPayment,
                 type: 'food',
-                customer_name: 'Customer',
+                customer_name: customerName,
                 customer_phone: customerPhone,
                 created_at: new Date(),
                 restaurant_id: restaurantId,

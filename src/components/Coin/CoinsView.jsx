@@ -120,7 +120,7 @@ const CoinsView = ({ setView }) => {
 
                 <p className="text-yellow-100 text-sm font-medium mb-1 mt-4">Hungr Rewards</p>
                 <h1 className="text-4xl font-bold mb-2 flex items-center gap-2">
-                    <span className="text-5xl">🪙</span> {loading ? '...' : balance}
+                    <span className="text-5xl">🪙</span> {loading ? '...' : (balance || 0)}
                 </h1>
                 <p className="text-xs text-yellow-50 opacity-90 mb-6">
                     Use coins to redeem exclusive food vouchers.
@@ -277,9 +277,9 @@ const CoinsView = ({ setView }) => {
                                             </div>
                                             <div className="text-right">
                                                 <p className={`font-black text-base ${tx.entry_type === 'credit' ? 'text-yellow-600' : 'text-orange-600'}`}>
-                                                    {tx.entry_type === 'credit' ? '+' : '-'} {parseInt(tx.amount)}
+                                                    {tx.entry_type === 'credit' ? '+' : '-'} {parseInt(tx.amount || 0)}
                                                 </p>
-                                                <p className="text-[9px] text-gray-400 mt-0.5 font-bold">Total: {parseInt(tx.running_balance)}</p>
+                                                <p className="text-[9px] text-gray-400 mt-0.5 font-bold">Total: {parseInt(tx.running_balance || 0)}</p>
                                             </div>
                                         </div>
                                     ))}

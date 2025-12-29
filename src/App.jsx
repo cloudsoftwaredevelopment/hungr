@@ -116,6 +116,11 @@ function AppContent() {
     if (path.includes('food')) return 'food';
     if (path.includes('rides')) return 'rides';
     if (path.includes('stores')) return 'stores';
+    if (path.includes('wallet')) return 'wallet';
+    if (path.includes('coins')) return 'coins';
+    if (path.includes('transactions')) return 'transactions';
+    if (path.includes('addresses')) return 'addresses';
+    if (path.includes('address-editor')) return 'address-editor';
     return 'home';
   };
 
@@ -165,7 +170,7 @@ function AppContent() {
               <CoinDisplay onClick={() => navigate('/coins')} />
               <button onClick={() => user ? navigate('/profile') : navigate('/login')}
                 className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold text-xs border border-white/30">
-                {user ? user.username[0].toUpperCase() : <User size={16} />}
+                {user && user.username ? user.username[0].toUpperCase() : <User size={16} />}
               </button>
             </div>
           </div>

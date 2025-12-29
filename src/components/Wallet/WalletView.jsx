@@ -157,7 +157,7 @@ const WalletView = () => {
         </div>
 
         <p className="text-orange-100 text-sm font-medium mb-1">Total Balance</p>
-        <h1 className="text-4xl font-bold mb-2">₱ {parseFloat(balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}</h1>
+        <h1 className="text-4xl font-bold mb-2">₱ {parseFloat(balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</h1>
 
         {pendingRequests > 0 && (
           <p className="text-orange-200 text-sm flex items-center gap-1 mb-4">
@@ -214,7 +214,7 @@ const WalletView = () => {
                   </div>
                 </div>
                 <span className={`font-bold text-sm ${tx.type === 'topup' ? 'text-green-600' : 'text-gray-900'}`}>
-                  {tx.type === 'topup' ? '+' : '-'} ₱{parseFloat(tx.amount).toFixed(2)}
+                  {tx.type === 'topup' ? '+' : '-'} ₱{parseFloat(tx.amount || 0).toFixed(2)}
                 </span>
               </div>
             ))}
@@ -262,9 +262,9 @@ const WalletView = () => {
                       </div>
                       <div className="text-right">
                         <p className={`font-black text-sm ${tx.entry_type === 'credit' ? 'text-green-600' : 'text-gray-900'}`}>
-                          {tx.entry_type === 'credit' ? '+' : '-'} ₱{parseFloat(tx.amount).toFixed(2)}
+                          {tx.entry_type === 'credit' ? '+' : '-'} ₱{parseFloat(tx.amount || 0).toFixed(2)}
                         </p>
-                        <p className="text-[9px] text-gray-400 mt-0.5">Bal: ₱{parseFloat(tx.running_balance).toFixed(2)}</p>
+                        <p className="text-[9px] text-gray-400 mt-0.5">Bal: ₱{parseFloat(tx.running_balance || 0).toFixed(2)}</p>
                       </div>
                     </div>
                   ))}
