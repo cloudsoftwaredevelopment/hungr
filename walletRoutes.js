@@ -15,6 +15,7 @@ import path from 'path';
 import fs from 'fs';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
+import { generateInvoicePDF, sendInvoiceEmail } from './src/utils/emailService.js';
 
 // Proof upload directory
 const proofUploadsDir = path.join(process.cwd(), 'uploads', 'wallet-proofs');
@@ -747,6 +748,30 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
                 VALUES (?, 'topup_approved', 'admin', ?, ?, ?)
             `, [request.merchant_id, adminId, req.ip, `Approved ₱${request.amount}, new balance: ₱${newBalance.toFixed(2)}`]);
 
+            // Post-approval email notification (Electronic Invoice)
+            try {
+                const [merchants] = await db.execute(
+                    'SELECT email, name FROM merchants WHERE id = ?',
+                    [request.merchant_id]
+                );
+
+                if (merchants && merchants.length > 0 && merchants[0].email) {
+                    const merchant = merchants[0];
+                    const invoiceData = {
+                        transactionId: request.payment_reference || `TW-${requestId}`,
+                        amount: request.amount,
+                        userName: merchant.name,
+                        userEmail: merchant.email,
+                        description: `Merchant Wallet Top-up via ${request.payment_method}`
+                    };
+
+                    const pdfBuffer = await generateInvoicePDF(invoiceData);
+                    await sendInvoiceEmail(merchant.email, invoiceData, pdfBuffer);
+                }
+            } catch (emailError) {
+                console.error('Failed to send merchant invoice email:', emailError);
+            }
+
             // Notify merchant via socket
             io.to(`merchant_${request.merchant_id}`).emit('wallet_updated', {
                 type: 'topup_approved',
@@ -1108,6 +1133,30 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             `, [adminId, notes || (isRefund ? 'Auto-refund approved' : 'Approved via admin'), requestId]);
 
             sendSuccess(res, { requestId, newBalance: newBalance.toFixed(2) }, 'Request approved successfully');
+
+            // Post-approval email notification (Electronic Invoice)
+            try {
+                const [users] = await db.execute(
+                    'SELECT email, username FROM users WHERE id = ?',
+                    [request.user_id]
+                );
+
+                if (users && users.length > 0 && users[0].email) {
+                    const user = users[0];
+                    const invoiceData = {
+                        transactionId: request.payment_reference || `TC-${requestId}`,
+                        amount: request.amount,
+                        userName: user.username,
+                        userEmail: user.email,
+                        description: isRefund ? `Refund for ${request.payment_reference || 'Order'}` : `Customer Wallet Top-up via ${request.payment_method}`
+                    };
+
+                    const pdfBuffer = await generateInvoicePDF(invoiceData);
+                    await sendInvoiceEmail(user.email, invoiceData, pdfBuffer);
+                }
+            } catch (emailError) {
+                console.error('Failed to send customer invoice email:', emailError);
+            }
 
         } catch (err) {
             console.error('Admin customer request approval error:', err);
@@ -2176,6 +2225,31 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             console.log(`[Coins] Admin approved merchant coin purchase #${requestId}`);
 
             sendSuccess(res, { message: 'Coin purchase approved', newBalance });
+
+            // Post-approval email notification (Electronic Invoice)
+            try {
+                const [merchants] = await db.execute(
+                    'SELECT email, name FROM merchants WHERE id = ?',
+                    [request.merchant_id]
+                );
+
+                if (merchants && merchants.length > 0 && merchants[0].email) {
+                    const merchant = merchants[0];
+                    const invoiceData = {
+                        transactionId: request.payment_reference || `CM-${requestId}`,
+                        amount: request.peso_amount, // For coins, the invoice should reflect the peso amount paid
+                        userName: merchant.name,
+                        userEmail: merchant.email,
+                        description: `Hungr Coins Purchase (Qty: ${request.amount})`
+                    };
+
+                    const pdfBuffer = await generateInvoicePDF(invoiceData);
+                    await sendInvoiceEmail(merchant.email, invoiceData, pdfBuffer);
+                }
+            } catch (emailError) {
+                console.error('Failed to send merchant coin invoice email:', emailError);
+            }
+
         } catch (err) {
             console.error('Merchant coin approval error:', err);
             sendError(res, 500, 'Failed to approve', 'DB_ERROR', err);
@@ -2231,6 +2305,31 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             console.log(`[Coins] Admin approved rider coin purchase #${requestId}`);
 
             sendSuccess(res, { message: 'Coin purchase approved', newBalance });
+
+            // Post-approval email notification (Electronic Invoice)
+            try {
+                const [riders] = await db.execute(
+                    'SELECT email, name FROM riders WHERE id = ?',
+                    [request.rider_id]
+                );
+
+                if (riders && riders.length > 0 && riders[0].email) {
+                    const rider = riders[0];
+                    const invoiceData = {
+                        transactionId: request.payment_reference || `CR-${requestId}`,
+                        amount: request.peso_amount, // For coins, the invoice should reflect the peso amount paid
+                        userName: rider.name,
+                        userEmail: rider.email,
+                        description: `Hungr Coins Purchase (Qty: ${request.amount})`
+                    };
+
+                    const pdfBuffer = await generateInvoicePDF(invoiceData);
+                    await sendInvoiceEmail(rider.email, invoiceData, pdfBuffer);
+                }
+            } catch (emailError) {
+                console.error('Failed to send rider coin invoice email:', emailError);
+            }
+
         } catch (err) {
             console.error('Rider coin approval error:', err);
             sendError(res, 500, 'Failed to approve', 'DB_ERROR', err);
