@@ -61,7 +61,8 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
           // Add gradient to each premium banner
           const bannersWithGradients = data.data.map((banner, idx) => ({
             ...banner,
-            gradient: gradients[idx % gradients.length]
+            gradient: gradients[idx % gradients.length],
+            is_premium: true
           }));
           setPremiumBanners(bannersWithGradients);
         }
@@ -187,23 +188,30 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
                 }
               }}
             >
-              <div className={`absolute inset-0 bg-gradient-to-r ${banner.gradient} opacity-90`}></div>
-              <img
-                src={banner.image}
-                alt={banner.title}
-                className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50 group-hover:scale-105 transition duration-500"
-              />
-              <div className="relative p-5 text-white flex flex-col justify-center min-h-[140px]">
-                <div className="bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full w-fit mb-2 flex items-center gap-1">
-                  <TrendingUp size={10} /> SPONSORED
+              <div className={`absolute inset-0 bg-gradient-to-br ${banner.gradient}`}></div>
+
+              <div className="relative p-5 text-white flex items-center justify-between min-h-[160px] gap-4">
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="bg-black/20 text-white text-[9px] font-black px-2 py-0.5 rounded-full w-fit mb-2 flex items-center gap-1 uppercase tracking-widest border border-white/10">
+                    <TrendingUp size={10} /> {banner.is_premium ? 'Premium Partner' : 'Featured Offer'}
+                  </div>
+                  <h3 className="text-xl font-black leading-tight mb-1 drop-shadow-sm">
+                    {banner.title}
+                  </h3>
+                  <p className="text-[10px] font-bold text-white/90 mb-3 line-clamp-1">{banner.description}</p>
+                  <button className="bg-white text-gray-900 text-[10px] font-black py-1.5 px-4 rounded-xl w-fit hover:scale-105 transition-all shadow-lg active:scale-95">
+                    {banner.cta || 'Order Now'}
+                  </button>
                 </div>
-                <h3 className="text-2xl font-extrabold leading-tight mb-1">
-                  {banner.title} <br />{banner.subtitle}
-                </h3>
-                <p className="text-xs text-white/80 mb-3 opacity-90">{banner.description}</p>
-                <button className="bg-white text-orange-600 text-xs font-bold py-2 px-4 rounded-full w-fit hover:bg-orange-50 transition shadow-sm">
-                  {banner.cta}
-                </button>
+
+                {/* Sharp Logo Container - Solid White for max clarity */}
+                <div className="w-28 h-28 bg-white rounded-3xl p-3 shadow-2xl flex items-center justify-center overflow-hidden transform group-hover:scale-105 transition-transform duration-500 border-4 border-white/20">
+                  <img
+                    src={banner.image}
+                    alt={banner.title}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
               </div>
             </div>
           ))}
