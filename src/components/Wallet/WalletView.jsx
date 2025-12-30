@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Upload, X, History, Clock, CheckCircle, XCircle, Building2, Smartphone, CreditCard } from 'lucide-react';
+import { Wallet, Plus, ArrowUpRight, ArrowDownLeft, Upload, X, History, Clock, CheckCircle, XCircle, Building2, Smartphone, CreditCard, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const API_URL = '/api';
