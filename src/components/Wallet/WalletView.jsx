@@ -235,7 +235,20 @@ const WalletView = () => {
                   </div>
                   <div>
                     <p className="font-black text-sm text-gray-900 tracking-tight leading-tight uppercase">{tx.description || tx.type}</p>
-                    <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{new Date(tx.created_at).toLocaleDateString()}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{new Date(tx.created_at).toLocaleDateString()}</p>
+                      {(tx.type === 'topup' || tx.transaction_type === 'topup') && tx.reference_id && tx.reference_id.includes('topup_request_') && (
+                        <a
+                          href={`${API_URL}/wallet/invoice/customer/${tx.reference_id.split('_').pop()}?token=${sessionStorage.getItem('accessToken')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 bg-orange-100/50 rounded-lg text-[10px] font-black uppercase tracking-widest text-orange-600 hover:text-orange-700 mt-0.5 flex items-center gap-1 transition-all"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <CreditCard size={12} strokeWidth={3} /> Download Invoice
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <span className={`font-black text-base tracking-tight ${tx.type === 'topup' ? 'text-emerald-600' : 'text-gray-900'}`}>
@@ -281,9 +294,22 @@ const WalletView = () => {
                           </div>
                           <div>
                             <p className="font-bold text-sm text-gray-900 leading-tight">{tx.description || tx.transaction_type}</p>
-                            <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 uppercase tracking-wider font-semibold">
-                              <Clock size={10} /> {new Date(tx.created_at).toLocaleString()}
-                            </p>
+                            <div className="flex items-center gap-3">
+                              <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 uppercase tracking-wider font-semibold">
+                                <Clock size={10} /> {new Date(tx.created_at).toLocaleString()}
+                              </p>
+                              {(tx.entry_type === 'credit' || tx.transaction_type === 'topup') && tx.reference_id && tx.reference_id.includes('topup_request_') && (
+                                <a
+                                  href={`${API_URL}/wallet/invoice/customer/${tx.reference_id.split('_').pop()}?token=${sessionStorage.getItem('accessToken')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2 py-1 bg-orange-50 rounded-lg text-[9px] font-black uppercase tracking-widest text-orange-600 hover:text-orange-700 mt-0.5 flex items-center gap-1 transition-all"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <CreditCard size={12} strokeWidth={3} /> Download Invoice
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">

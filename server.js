@@ -618,7 +618,7 @@ const sendSuccess = (res, data, message = null) => {
 };
 
 const verifyToken = (req, res, next) => {
-    const token = req.headers['authorization']?.split(' ')[1];
+    const token = req.headers['authorization']?.split(' ')[1] || req.query.token;
     if (!token) return sendError(res, 401, 'No token provided');
 
     jwt.verify(token, JWT_SECRET, (err, decoded) => {

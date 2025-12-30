@@ -876,7 +876,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
 
             // Get recent transactions
             const [transactions] = await db.execute(`
-                SELECT id, entry_type, transaction_type, amount, description, created_at
+                SELECT id, entry_type, transaction_type, amount, description, reference_id, created_at
                 FROM customer_wallet_ledger 
                 WHERE user_id = ? AND status = 'confirmed'
                 ORDER BY created_at DESC LIMIT 20
@@ -896,6 +896,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
                     type: tx.entry_type === 'credit' ? 'topup' : 'payment',
                     description: tx.description || tx.transaction_type,
                     amount: tx.amount,
+                    reference_id: tx.reference_id,
                     created_at: tx.created_at
                 })),
                 pendingRequests: pendingReqs[0]?.count || 0
@@ -2377,6 +2378,106 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
         } catch (err) {
             console.error('Rider coin rejection error:', err);
             sendError(res, 500, 'Failed to reject', 'DB_ERROR', err);
+        }
+    });
+
+    /**
+     * GET /api/wallet/invoice/:type/:id - Download invoice PDF
+     * Supported types: merchant, customer, rider, merchant_coin, rider_coin
+     */
+    apiRouter.get('/wallet/invoice/:type/:id', verifyToken, async (req, res) => {
+        try {
+            const { type, id } = req.params;
+            const userId = req.user.id;
+            const isAdmin = req.user.role === 'admin';
+
+            let table, userField, prefix;
+            switch (type) {
+                case 'merchant':
+                    table = 'merchant_topup_requests';
+                    userField = 'merchant_id';
+                    prefix = 'TW';
+                    break;
+                case 'customer':
+                    table = 'customer_topup_requests';
+                    userField = 'user_id';
+                    prefix = 'TC';
+                    break;
+                case 'rider':
+                    table = 'rider_topup_requests';
+                    userField = 'rider_id';
+                    prefix = 'TR';
+                    break;
+                case 'merchant_coin':
+                    table = 'merchant_coin_topup_requests';
+                    userField = 'merchant_id';
+                    prefix = 'CM';
+                    break;
+                case 'rider_coin':
+                    table = 'rider_coin_topup_requests';
+                    userField = 'rider_id';
+                    prefix = 'CR';
+                    break;
+                default:
+                    return sendError(res, 400, 'Invalid invoice type');
+            }
+
+            // Fetch request
+            const [requests] = await db.execute(
+                `SELECT * FROM ${table} WHERE id = ?`,
+                [id]
+            );
+
+            if (requests.length === 0) {
+                return sendError(res, 404, 'Invoice request not found');
+            }
+
+            const request = requests[0];
+
+            // Security check: Only the owner or an admin can view the invoice
+            if (!isAdmin && request[userField] !== userId) {
+                return sendError(res, 403, 'Unauthorized to view this invoice');
+            }
+
+            if (request.status !== 'approved') {
+                return sendError(res, 400, 'Invoice only available for approved requests');
+            }
+
+            // Fetch user info
+            let name, email;
+            if (type === 'merchant' || type === 'merchant_coin') {
+                const [rows] = await db.execute('SELECT name, email FROM merchants WHERE id = ?', [request.merchant_id]);
+                name = rows[0]?.name;
+                email = rows[0]?.email;
+            } else if (type === 'customer') {
+                const [rows] = await db.execute('SELECT username as name, email FROM users WHERE id = ?', [request.user_id]);
+                name = rows[0]?.name;
+                email = rows[0]?.email;
+            } else { // rider or rider_coin
+                const [rows] = await db.execute('SELECT name, email FROM riders WHERE id = ?', [request.rider_id]);
+                name = rows[0]?.name;
+                email = rows[0]?.email;
+            }
+
+            const invoiceData = {
+                transactionId: request.payment_reference || `${prefix}-${id}`,
+                amount: request.peso_amount || request.amount,
+                userName: name || 'Hungr User',
+                userEmail: email || '',
+                description: type.includes('coin')
+                    ? `Hungr Coins Purchase (Qty: ${request.amount})`
+                    : `Wallet Top-up via ${request.payment_method}`
+            };
+
+            const pdfBuffer = await generateInvoicePDF(invoiceData);
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename=Invoice_${invoiceData.transactionId}.pdf`);
+            res.send(pdfBuffer);
+
+        } catch (err) {
+            console.error('Invoice generation error:', err);
+            sendError(res, 500, 'Failed to generate invoice PDF', 'PDF_ERROR', err);
         }
     });
 
