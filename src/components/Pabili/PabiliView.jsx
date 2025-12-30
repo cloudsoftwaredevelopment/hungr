@@ -351,7 +351,6 @@ const PabiliView = ({ setView }) => {
         )}
       </div>
     </div>
-    </div >
   );
 };
 

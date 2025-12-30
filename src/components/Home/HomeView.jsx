@@ -181,37 +181,48 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
           {banners.map((banner) => (
             <div
               key={banner.id}
-              className="min-w-full relative cursor-pointer group"
+              className="min-w-full relative cursor-pointer group h-[180px] overflow-hidden"
               onClick={() => {
                 if (banner.restaurantId) {
                   navigate(`/restaurant/${banner.restaurantId}`);
                 }
               }}
             >
-              <div className={`absolute inset-0 bg-gradient-to-br ${banner.gradient}`}></div>
+              {/* Image Background */}
+              <img
+                src={banner.image}
+                alt={banner.title}
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
+              />
 
-              <div className="relative p-5 text-white flex items-center justify-between min-h-[160px] gap-4">
+              {/* Enhanced Gradient Overlay for readability while revealing brand */}
+              <div className={`absolute inset-0 bg-gradient-to-r ${banner.gradient.split(' ')[0]} via-transparent to-transparent opacity-90`}></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent"></div>
+
+              <div className="relative h-full p-6 text-white flex items-center justify-between gap-4">
                 <div className="flex-1 flex flex-col justify-center">
-                  <div className="bg-black/20 text-white text-[9px] font-black px-2 py-0.5 rounded-full w-fit mb-2 flex items-center gap-1 uppercase tracking-widest border border-white/10">
-                    <TrendingUp size={10} /> {banner.is_premium ? 'Premium Partner' : 'Featured Offer'}
+                  <div className="bg-white/20 backdrop-blur-md text-white text-[9px] font-black px-2.5 py-1 rounded-full w-fit mb-3 flex items-center gap-1 uppercase tracking-widest border border-white/20">
+                    <TrendingUp size={10} /> {banner.is_premium ? 'Premium Partner' : 'Special Offer'}
                   </div>
-                  <h3 className="text-xl font-black leading-tight mb-1 drop-shadow-sm">
+                  <h3 className="text-2xl font-black leading-tight mb-1 drop-shadow-lg tracking-tight">
                     {banner.title}
                   </h3>
-                  <p className="text-[10px] font-bold text-white/90 mb-3 line-clamp-1">{banner.description}</p>
-                  <button className="bg-white text-gray-900 text-[10px] font-black py-1.5 px-4 rounded-xl w-fit hover:scale-105 transition-all shadow-lg active:scale-95">
+                  <p className="text-[11px] font-bold text-white/90 mb-4 line-clamp-1 drop-shadow-md">{banner.description}</p>
+                  <button className="bg-white text-gray-900 text-[11px] font-black py-2 px-6 rounded-2xl w-fit hover:scale-105 transition-all shadow-xl active:scale-95">
                     {banner.cta || 'Order Now'}
                   </button>
                 </div>
 
-                {/* Sharp Logo Container - Solid White for max clarity */}
-                <div className="w-28 h-28 bg-white rounded-3xl p-3 shadow-2xl flex items-center justify-center overflow-hidden transform group-hover:scale-105 transition-transform duration-500 border-4 border-white/20">
-                  <img
-                    src={banner.image}
-                    alt={banner.title}
-                    className="w-full h-full object-contain"
-                  />
-                </div>
+                {/* Optional floating logo for brand reinforcement - now with transparent bg for better integration */}
+                {banner.is_premium && (
+                  <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-[2rem] p-3 shadow-2xl flex items-center justify-center overflow-hidden border border-white/30 transform group-hover:rotate-6 transition-transform duration-500">
+                    <img
+                      src={banner.image}
+                      alt={banner.title}
+                      className="w-full h-full object-contain filter drop-shadow-md"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ))}

@@ -204,8 +204,8 @@ function AppContent() {
             </div>
           } />
 
-          <Route path="/pabili" element={<Pabili />} />
-          <Route path="/pabili/store/:id" element={<Pabili />} />
+          <Route path="/pabili" element={<PabiliView setView={handleSetView} />} />
+          <Route path="/pabili/store/:id" element={<PabiliView setView={handleSetView} />} />
 
           <Route path="/cart" element={<CartView cart={cart} setCart={setCart} setView={handleSetView} />} />
 
