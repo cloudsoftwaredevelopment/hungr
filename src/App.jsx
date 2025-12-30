@@ -8,7 +8,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider, useToast } from './components/UI/Toast';
 import Login from './components/Auth/Login';
 import HomeView from './components/Home/HomeView';
-import Pabili from './components/Pabili/Pabili';
+import PabiliView from './components/Pabili/PabiliView';
 import CartView from './components/Cart/CartView';
 import ProfileView from './components/Profile/ProfileView';
 import SavedAddresses from './components/Address/SavedAddresses';

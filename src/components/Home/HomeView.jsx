@@ -198,7 +198,7 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
               />
 
               {/* Enhanced Gradient Overlay for readability while revealing brand */}
-              <div className={`absolute inset-0 bg-gradient-to-r ${banner.gradient.split(' ')[0]} via-transparent to-transparent opacity-90`}></div>
+              <div className={`absolute inset-0 bg-gradient-to-r ${(banner.gradient || 'from-orange-600').split(' ')[0]} via-transparent to-transparent opacity-90`}></div>
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent"></div>
 
               <div className="relative h-full p-6 text-white flex items-center justify-between gap-4">
