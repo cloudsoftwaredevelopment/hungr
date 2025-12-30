@@ -5,9 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 const API_URL = '/api';
 
 const WalletView = () => {
-  console.log("[WalletView] Initializing...");
   const { user } = useAuth();
-  console.log("[WalletView] User:", user);
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [pendingRequests, setPendingRequests] = useState(0);

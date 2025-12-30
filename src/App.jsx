@@ -230,7 +230,7 @@ function AppContent() {
 
           <Route path="/restaurant/:id" element={<RestaurantView addToCart={handleAddToCart} />} />
 
-          <Route path="/wallet" element={<ProtectedRoute><div className="p-4">{console.log("[App] Rendering Wallet Route")}<WalletView /></div></ProtectedRoute>} />
+          <Route path="/wallet" element={<ProtectedRoute><WalletView /></ProtectedRoute>} />
           <Route path="/transactions" element={<ProtectedRoute><div className="p-4"><TransactionsView /></div></ProtectedRoute>} />
 
           <Route path="/rides" element={<RidesView setView={handleSetView} />} />
