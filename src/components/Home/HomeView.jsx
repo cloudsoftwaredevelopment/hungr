@@ -151,22 +151,24 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
       )}
 
       {/* Category Grid */}
-      <div className="grid grid-cols-4 gap-3 mb-8 px-1">
+      <div className="grid grid-cols-4 gap-4 mb-8 px-1">
         {[
-          { label: 'Food', emoji: '🍔', bg: 'bg-red-50', iconColor: 'text-red-500' },
-          { label: 'Pabili', emoji: '🛒', bg: 'bg-blue-50', iconColor: 'text-blue-500' },
-          { label: 'Stores', emoji: '🏪', bg: 'bg-green-50', iconColor: 'text-green-500' },
-          { label: 'Ride', emoji: '🚗', bg: 'bg-amber-50', iconColor: 'text-amber-500' }
+          { label: 'Food', emoji: '🍔', bg: 'bg-red-500/10', borderColor: 'border-red-500/20' },
+          { label: 'Pabili', emoji: '🛒', bg: 'bg-blue-500/10', borderColor: 'border-blue-500/20' },
+          { label: 'Stores', emoji: '🏪', bg: 'bg-green-500/10', borderColor: 'border-green-500/20' },
+          { label: 'Ride', emoji: '🚗', bg: 'bg-amber-500/10', borderColor: 'border-amber-500/20' }
         ].map((cat) => (
           <button
             key={cat.label}
             onClick={() => handleCategoryClick(cat.label)}
-            className="flex flex-col items-center gap-2 group transition-all active:scale-90"
+            className="flex flex-col items-center gap-2 group transition-all active:scale-95"
           >
-            <div className={`w-14 h-14 ${cat.bg} rounded-2xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-all border border-white`}>
-              <span className="text-2xl transform group-hover:scale-110 transition-transform">{cat.emoji}</span>
+            <div className={`w-16 h-16 ${cat.bg} backdrop-blur-xl rounded-[2rem] flex items-center justify-center shadow-[0_8px_32px_rgba(0,0,0,0.05)] group-hover:shadow-[0_8px_32px_rgba(0,0,0,0.1)] transition-all border ${cat.borderColor} relative overflow-hidden`}>
+              {/* Subtle inner gloss effect */}
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-50"></div>
+              <span className="text-3xl transform group-hover:scale-125 transition-all duration-300 drop-shadow-sm z-10">{cat.emoji}</span>
             </div>
-            <span className="text-[11px] font-bold text-gray-700 tracking-tight">{cat.label}</span>
+            <span className="text-[12px] font-black text-gray-800 tracking-tight uppercase">{cat.label}</span>
           </button>
         ))}
       </div>

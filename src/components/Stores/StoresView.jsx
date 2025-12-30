@@ -74,9 +74,9 @@ export default function StoresView({ addToCart }) {
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`px-5 py-2.5 rounded-2xl text-xs font-black whitespace-nowrap transition-all border-2 active:scale-95 ${activeCategory === cat
-                ? 'bg-orange-600 text-white border-orange-600 shadow-lg shadow-orange-600/20'
-                : 'bg-white text-slate-500 border-slate-50 hover:border-orange-200 hover:text-orange-600 shadow-sm'
+              className={`px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest whitespace-nowrap transition-all active:scale-95 backdrop-blur-md border ${activeCategory === cat
+                ? 'bg-orange-600 text-white border-orange-600 shadow-lg shadow-orange-600/30'
+                : 'bg-slate-500/5 text-slate-500 border-slate-200/50 hover:bg-slate-500/10 hover:border-orange-200 shadow-sm'
                 }`}
             >
               {cat}
