@@ -1,12 +1,38 @@
-/* Paste this into src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --hungr-orange: #EA580C;
+  --orange-sunset: #F97316;
+}
+
 body {
-  background-color: #f9fafb; /* gray-50 */
+  background-color: #f8fafc; /* slate-50 */
+  font-family: 'Inter', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.hero-gradient {
+  background: linear-gradient(135deg, var(--orange-sunset) 0%, var(--hungr-orange) 100%);
 }
 
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

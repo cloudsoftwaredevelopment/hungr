@@ -101,185 +101,203 @@ const CartView = ({ cart, setCart, setView }) => {
     };
 
     return (
-        <div className="animate-in slide-in-from-right pb-24 bg-gray-50 min-h-screen">
+        <div className="pb-32 bg-slate-50 min-h-screen">
             {/* Header */}
-            <div className="flex items-center gap-3 mb-6 p-4 bg-white shadow-sm sticky top-0 z-10">
+            <div className="flex items-center gap-4 p-5 bg-white/80 backdrop-blur-xl sticky top-0 z-50 border-b border-slate-100 shadow-sm">
                 <button
                     onClick={() => setView('home')}
-                    className="p-2 hover:bg-gray-100 rounded-full transition"
+                    className="p-3 bg-slate-100 rounded-2xl text-slate-600 hover:bg-slate-200 transition-all active:scale-95"
                 >
-                    <ChevronLeft size={24} className="text-gray-700" />
+                    <ChevronLeft size={24} strokeWidth={3} />
                 </button>
-                <h2 className="text-xl font-bold text-gray-900">Your Basket</h2>
+                <div>
+                    <h2 className="text-xl font-black text-gray-900 tracking-tight">Your Basket</h2>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{validCartItems.length} Items</p>
+                </div>
             </div>
 
-            <div className="px-4">
+            <div className="px-5 mt-6">
 
                 {validCartItems.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-                            <ShoppingBag size={40} className="text-orange-400" />
+                    <div className="flex flex-col items-center justify-center py-24 text-center">
+                        <div className="w-32 h-32 bg-orange-50 rounded-[3rem] flex items-center justify-center mb-6 shadow-inner border border-orange-100/50">
+                            <ShoppingBag size={56} className="text-orange-400 opacity-80" />
                         </div>
-                        <h3 className="font-bold text-gray-800 text-lg">Your cart is empty</h3>
-                        <p className="text-gray-500 text-sm mt-2 max-w-[200px]">
-                            Looks like you haven't added anything to your cart yet.
+                        <h3 className="font-black text-gray-900 text-2xl tracking-tight">Empty Basket</h3>
+                        <p className="text-slate-500 font-medium mt-3 max-w-[240px] leading-relaxed">
+                            Your basket is hungry! Add some delicious treats to get started.
                         </p>
                         <button
                             onClick={() => setView('home')}
-                            className="mt-6 bg-orange-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-orange-200 active:scale-95 transition"
+                            className="mt-10 hero-gradient text-white font-black py-4 px-12 rounded-[2rem] shadow-xl shadow-orange-600/20 active:scale-95 transition-all"
                         >
-                            Start Ordering
+                            Browse Restaurants
                         </button>
                     </div>
                 ) : (
                     <>
                         {/* Items List */}
-                        <div className="space-y-4 mb-6">
+                        <div className="space-y-4 mb-8">
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Order Items</h3>
                             {validCartItems.map((item, index) => (
-                                <div key={index} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-                                    {item.image_url ? (
-                                        <img src={item.image_url} alt={item.name} className="w-16 h-16 object-cover rounded-lg bg-gray-200" />
-                                    ) : (
-                                        <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center text-xs text-gray-400">No Img</div>
-                                    )}
+                                <div key={index} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-50 flex items-center gap-4 group">
+                                    <div className="w-20 h-20 bg-slate-100 rounded-2xl overflow-hidden shrink-0 shadow-inner">
+                                        {item.image_url ? (
+                                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-[10px] font-black text-slate-300">NO IMAGE</div>
+                                        )}
+                                    </div>
                                     <div className="flex-1">
-                                        <h3 className="font-bold text-gray-900 line-clamp-1">{item.name || 'Unknown Item'}</h3>
-                                        <p className="text-orange-600 font-bold text-sm">₱{parseFloat(item.price || 0).toFixed(2)}</p>
+                                        <h3 className="font-extrabold text-gray-900 text-[15px] line-clamp-1 tracking-tight mb-1">{item.name || 'Unknown Item'}</h3>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-black text-orange-600">₱{parseFloat(item.price || 0).toFixed(2)}</span>
+                                            <span className="text-[10px] text-slate-300 font-bold">• Qty: 1</span>
+                                        </div>
                                     </div>
                                     <button
                                         onClick={() => removeItem(index)}
-                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition"
+                                        className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all active:scale-90"
                                     >
-                                        <Trash2 size={18} />
+                                        <Trash2 size={20} strokeWidth={2.5} />
                                     </button>
                                 </div>
                             ))}
                         </div>
 
                         {/* Payment Options */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
-                            <h3 className="font-bold text-gray-900 mb-3">Payment Method</h3>
-                            <div className="space-y-2">
+                        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 mb-8">
+                            <h3 className="font-black text-gray-900 mb-5 tracking-tight flex items-center gap-2">
+                                <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                                    <Banknote size={18} />
+                                </div>
+                                Payment Method
+                            </h3>
+                            <div className="space-y-3">
 
                                 {/* Cash */}
                                 <button
                                     onClick={() => setPaymentMethod('cash')}
-                                    className={`w-full flex items-center justify-between p-3 rounded-xl border transition ${paymentMethod === 'cash' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}
+                                    className={`w-full flex items-center justify-between p-4 rounded-[1.5rem] border-2 transition-all duration-300 active:scale-[0.98] ${paymentMethod === 'cash' ? 'border-orange-600 bg-orange-50/30' : 'border-slate-50 bg-slate-50/50 hover:bg-slate-100'}`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="bg-green-100 p-2 rounded-lg text-green-600">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`p-3 rounded-2xl transition-colors ${paymentMethod === 'cash' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'bg-white text-slate-400 shadow-sm'}`}>
                                             <Banknote size={20} />
                                         </div>
-                                        <span className="font-bold text-sm text-gray-700">Cash on Delivery</span>
+                                        <span className={`font-black text-sm tracking-tight ${paymentMethod === 'cash' ? 'text-gray-900' : 'text-slate-500'}`}>Cash on Delivery</span>
                                     </div>
-                                    {paymentMethod === 'cash' && <CheckCircle size={18} className="text-orange-500" />}
+                                    {paymentMethod === 'cash' && <div className="w-6 h-6 bg-orange-600 rounded-full flex items-center justify-center shadow-lg shadow-orange-600/20"><CheckCircle size={14} className="text-white" strokeWidth={4} /></div>}
                                 </button>
 
                                 {/* Wallet */}
                                 <button
                                     onClick={() => balances.wallet >= total && setPaymentMethod('wallet')}
                                     disabled={balances.wallet < total}
-                                    className={`w-full flex items-center justify-between p-3 rounded-xl border transition ${paymentMethod === 'wallet' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'} ${balances.wallet < total ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    className={`w-full flex items-center justify-between p-4 rounded-[1.5rem] border-2 transition-all duration-300 active:scale-[0.98] ${paymentMethod === 'wallet' ? 'border-orange-600 bg-orange-50/30' : 'border-slate-50 bg-slate-50/50 hover:bg-slate-100'} ${balances.wallet < total ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`p-3 rounded-2xl transition-colors ${paymentMethod === 'wallet' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'bg-white text-slate-400 shadow-sm'}`}>
                                             <Wallet size={20} />
                                         </div>
                                         <div className="text-left">
-                                            <span className="font-bold text-sm text-gray-700 block">Hungr Wallet</span>
-                                            <span className="text-xs text-gray-500">Bal: ₱{balances.wallet.toFixed(2)}</span>
+                                            <span className={`font-black text-sm tracking-tight block ${paymentMethod === 'wallet' ? 'text-gray-900' : 'text-slate-500'}`}>Hungr Wallet</span>
+                                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Balance: ₱{balances.wallet.toFixed(2)}</span>
                                         </div>
                                     </div>
-                                    {paymentMethod === 'wallet' && <CheckCircle size={18} className="text-orange-500" />}
+                                    {paymentMethod === 'wallet' && <div className="w-6 h-6 bg-orange-600 rounded-full flex items-center justify-center shadow-lg shadow-orange-600/20"><CheckCircle size={14} className="text-white" strokeWidth={4} /></div>}
                                 </button>
 
                                 {/* Coins */}
                                 <button
                                     onClick={() => balances.coins >= total && setPaymentMethod('coins')}
                                     disabled={balances.coins < total}
-                                    className={`w-full flex items-center justify-between p-3 rounded-xl border transition ${paymentMethod === 'coins' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'} ${balances.coins < total ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    className={`w-full flex items-center justify-between p-4 rounded-[1.5rem] border-2 transition-all duration-300 active:scale-[0.98] ${paymentMethod === 'coins' ? 'border-orange-600 bg-orange-50/30' : 'border-slate-50 bg-slate-50/50 hover:bg-slate-100'} ${balances.coins < total ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="bg-yellow-100 p-2 rounded-lg text-yellow-600">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`p-3 rounded-2xl transition-colors ${paymentMethod === 'coins' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'bg-white text-slate-400 shadow-sm'}`}>
                                             <Coins size={20} />
                                         </div>
                                         <div className="text-left">
-                                            <span className="font-bold text-sm text-gray-700 block">Hungr Coins</span>
-                                            <span className="text-xs text-gray-500">Bal: {balances.coins}</span>
+                                            <span className={`font-black text-sm tracking-tight block ${paymentMethod === 'coins' ? 'text-gray-900' : 'text-slate-500'}`}>Hungr Coins</span>
+                                            <span className="text-[10px] font-black text-yellow-600 uppercase tracking-widest">Balance: {balances.coins}</span>
                                         </div>
                                     </div>
-                                    {paymentMethod === 'coins' && <CheckCircle size={18} className="text-orange-500" />}
+                                    {paymentMethod === 'coins' && <div className="w-6 h-6 bg-orange-600 rounded-full flex items-center justify-center shadow-lg shadow-orange-600/20"><CheckCircle size={14} className="text-white" strokeWidth={4} /></div>}
                                 </button>
 
                             </div>
                         </div>
 
                         {/* Bill Summary */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4">
-                            <h3 className="font-bold text-gray-900 mb-3">Payment Summary</h3>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between text-gray-500">
-                                    <span>Subtotal</span>
-                                    <span>₱{subtotal.toFixed(2)}</span>
+                        <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl mb-8 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-600/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+                            <h3 className="font-black mb-5 tracking-widest text-[10px] uppercase text-slate-400">Payment Summary</h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-sm font-bold opacity-80">
+                                    <span className="text-slate-400">Items Subtotal</span>
+                                    <span className="text-white">₱{subtotal.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between text-gray-500">
-                                    <span>Delivery Fee</span>
-                                    <span>₱{deliveryFee.toFixed(2)}</span>
+                                <div className="flex justify-between items-center text-sm font-bold opacity-80">
+                                    <span className="text-slate-400">Delivery Fee</span>
+                                    <span className="text-emerald-400">₱{deliveryFee.toFixed(2)}</span>
                                 </div>
-                                <div className="border-t border-gray-100 my-2 pt-2 flex justify-between font-bold text-lg text-gray-900">
-                                    <span>Total</span>
-                                    <span>₱{total.toFixed(2)}</span>
+                                <div className="h-px bg-white/10 my-4 shadow-sm"></div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-lg font-black tracking-tight">Total Amount</span>
+                                    <div className="text-right">
+                                        <span className="text-2xl font-black text-orange-500">₱{total.toFixed(2)}</span>
+                                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Tax Included</p>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Order Substitution Preference */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
-                            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                                <ShoppingBag size={18} className="text-orange-500" />
-                                If an item is unavailable:
-                            </h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    onClick={() => setSubstitutionPreference('cancel')}
-                                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-bold transition ${substitutionPreference === 'cancel' ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-gray-200 text-gray-500'}`}
-                                >
-                                    Cancel my order
-                                </button>
-                                <button
-                                    onClick={() => setSubstitutionPreference('call')}
-                                    className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-bold transition ${substitutionPreference === 'call' ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-gray-200 text-gray-500'}`}
-                                >
-                                    Call me
-                                </button>
                             </div>
                         </div>
 
                         {/* Special Instructions */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 font-geist">
-                            <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
-                                <ShoppingBag size={18} className="text-orange-500" />
-                                Instructions for Kitchen
+                        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 mb-8">
+                            <h3 className="font-black text-gray-900 mb-4 tracking-tight flex items-center gap-2">
+                                <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                                    <ShoppingBag size={18} />
+                                </div>
+                                Notes for Merchant
                             </h3>
                             <textarea
                                 value={instructions}
                                 onChange={(e) => setInstructions(e.target.value)}
                                 placeholder='e.g. "No onions please", "I have a peanut allergy"'
-                                className="w-full p-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all min-h-[100px] resize-none"
+                                className="w-full p-5 rounded-2xl border-none bg-slate-50 text-[13px] font-semibold text-slate-700 focus:ring-4 focus:ring-orange-600/10 transition-all min-h-[120px] resize-none shadow-inner"
                             />
+
+                            <div className="mt-6">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Substitution Preference</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={() => setSubstitutionPreference('cancel')}
+                                        className={`p-3 rounded-2xl border-2 text-xs font-black transition-all active:scale-95 ${substitutionPreference === 'cancel' ? 'border-orange-600 bg-orange-50 text-orange-600 shadow-lg shadow-orange-600/10' : 'border-slate-50 bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+                                    >
+                                        Cancel Order
+                                    </button>
+                                    <button
+                                        onClick={() => setSubstitutionPreference('call')}
+                                        className={`p-3 rounded-2xl border-2 text-xs font-black transition-all active:scale-95 ${substitutionPreference === 'call' ? 'border-orange-600 bg-orange-50 text-orange-600 shadow-lg shadow-orange-600/10' : 'border-slate-50 bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+                                    >
+                                        Call for Updates
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <button
-                            className="w-full bg-orange-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-orange-200 active:scale-95 transition flex justify-between px-6 mb-10 disabled:opacity-70"
+                            className={`w-full hero-gradient text-white font-black py-5 rounded-[2.5rem] shadow-2xl shadow-orange-600/30 active:scale-[0.98] transition-all flex items-center justify-center gap-4 mb-20 disabled:grayscale disabled:opacity-50`}
                             onClick={handleCheckout}
                             disabled={loading}
                         >
                             {loading ? (
-                                <span className="flex items-center gap-2 mx-auto"><Loader className="animate-spin" size={20} /> Processing...</span>
+                                <span className="flex items-center gap-3"><Loader className="animate-spin" size={24} strokeWidth={3} /> PROCESSING ORDER...</span>
                             ) : (
                                 <>
-                                    <span>Checkout ({paymentMethod.toUpperCase()})</span>
-                                    <span>₱{total.toFixed(2)}</span>
+                                    <span className="text-lg tracking-tight">PLACE ORDER</span>
+                                    <div className="w-px h-6 bg-white/30 hidden sm:block"></div>
+                                    <span className="text-lg tabular-nums">₱{total.toFixed(2)}</span>
                                 </>
                             )}
                         </button>

@@ -85,23 +85,26 @@ const ProfileView = ({ setView }) => {
   ];
 
   return (
-    <div className="pb-20 animate-in slide-in-from-right">
+    <div className="pb-24 bg-slate-50 min-h-screen">
       {/* Profile Header */}
-      <div className="bg-white p-6 rounded-xl shadow-sm flex flex-col items-center gap-4 mb-6">
-        <div className="relative">
-          <div className="w-24 h-24 rounded-full border-4 border-orange-50 overflow-hidden bg-gray-100 flex items-center justify-center">
+      <div className="hero-gradient p-8 pt-12 rounded-b-[3rem] shadow-2xl relative overflow-hidden flex flex-col items-center gap-6 mb-8">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -mr-24 -mt-24 blur-3xl"></div>
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-orange-600/20 rounded-full -ml-24 -mb-24 blur-3xl"></div>
+
+        <div className="relative group">
+          <div className="w-28 h-28 rounded-[2.5rem] border-4 border-white/30 overflow-hidden bg-white/20 backdrop-blur-md flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform duration-500">
             {user.profile_image ? (
               <img src={user.profile_image} alt="Profile" className="w-full h-full object-cover" />
             ) : (
-              <span className="text-3xl font-bold text-orange-300">{user.username?.charAt(0).toUpperCase() || 'U'}</span>
+              <span className="text-4xl font-black text-white drop-shadow-lg">{user.username?.charAt(0).toUpperCase() || 'U'}</span>
             )}
           </div>
           <button
             onClick={() => fileInputRef.current.click()}
-            className="absolute bottom-0 right-0 bg-orange-600 text-white p-2 rounded-full shadow-md hover:bg-orange-700 transition"
+            className="absolute -bottom-2 -right-2 bg-white text-orange-600 p-3 rounded-2xl shadow-xl hover:scale-110 hover:rotate-12 transition-all active:scale-90 border border-orange-100"
             disabled={uploading}
           >
-            {uploading ? <Loader size={14} className="animate-spin" /> : <Camera size={14} />}
+            {uploading ? <Loader size={16} className="animate-spin" /> : <Camera size={16} strokeWidth={3} />}
           </button>
           <input
             type="file"
@@ -112,66 +115,75 @@ const ProfileView = ({ setView }) => {
           />
         </div>
 
-        <div className="text-center w-full">
-          <h3 className="font-bold text-xl text-gray-900">{user.username}</h3>
+        <div className="text-center w-full relative z-10">
+          <h3 className="font-black text-3xl text-white tracking-tight drop-shadow-sm mb-2">{user.username}</h3>
 
-          {user.phone_number && (
-            <p className="text-sm text-gray-500 flex items-center justify-center gap-1 mt-1">
-              <Phone size={14} /> {user.phone_number}
-            </p>
-          )}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {user.phone_number && (
+              <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 border border-white/20">
+                <Phone size={12} strokeWidth={3} /> {user.phone_number}
+              </div>
+            )}
+            <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 border border-white/20">
+              <Mail size={12} strokeWidth={3} /> {user.email}
+            </div>
+          </div>
 
-          <p className="text-sm text-gray-500 flex items-center justify-center gap-1 mt-0.5">
-            <Mail size={14} /> {user.email}
-          </p>
-
-          {/* Added Address Display/Edit Link */}
           {user.address ? (
-            <p className="text-sm text-gray-500 flex items-center justify-center gap-1 mt-1 px-4 text-center">
-              <MapPin size={14} className="flex-shrink-0" />
-              <span className="truncate max-w-[200px]">{user.address}</span>
-            </p>
+            <div className="mt-4 bg-black/20 backdrop-blur-md px-5 py-2 rounded-2xl text-[12px] font-semibold text-orange-50 inline-flex items-center gap-2 border border-white/10 max-w-[80%] mx-auto">
+              <MapPin size={14} className="flex-shrink-0 text-orange-300" />
+              <span className="truncate">{user.address}</span>
+            </div>
           ) : (
             <button
               onClick={() => setView('addresses')}
-              className="text-sm text-orange-600 font-bold flex items-center justify-center gap-1 mt-2 mx-auto hover:underline"
+              className="mt-4 bg-white text-orange-600 px-6 py-2.5 rounded-2xl text-[12px] font-black tracking-tight flex items-center gap-2 mx-auto hover:scale-105 transition-transform shadow-xl shadow-orange-950/20"
             >
-              <MapPin size={14} /> Add Address
+              <MapPin size={14} strokeWidth={3} /> SETUP ADDRESS
             </button>
           )}
         </div>
       </div>
 
       {/* GPS Location Settings */}
-      <div className="mb-6">
-        <LocationSettings />
+      <div className="px-5 mb-8">
+        <div className="bg-white p-2 rounded-[2rem] shadow-sm border border-slate-50">
+          <LocationSettings />
+        </div>
       </div>
 
       {/* Menu Items */}
-      <div className="space-y-2 mb-6">
+      <div className="px-5 mb-10 space-y-3">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-4">Account Overview</h3>
         {menuItems.map((item) => (
           <button
             key={item.label}
             onClick={item.action}
-            className="w-full text-left p-4 bg-white rounded-xl shadow-sm text-sm font-medium text-gray-700 flex justify-between items-center hover:bg-gray-50 transition"
+            className="w-full text-left p-5 bg-white rounded-[1.8rem] shadow-sm flex items-center justify-between group hover:bg-slate-50 transition-all border border-slate-50/50 active:scale-[0.98]"
           >
-            <span className="flex items-center gap-2">
-              {item.icon && <item.icon size={18} className="text-gray-400" />}
-              {item.label}
-            </span>
-            <ChevronRight size={18} className="text-gray-400" />
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-600 transition-colors border border-slate-100 group-hover:border-orange-100">
+                {item.icon && <item.icon size={20} strokeWidth={2.5} />}
+              </div>
+              <span className="text-sm font-extrabold text-slate-700 tracking-tight">{item.label}</span>
+            </div>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-orange-500 transition-colors">
+              <ChevronRight size={20} strokeWidth={3} />
+            </div>
           </button>
         ))}
       </div>
 
       {/* Logout Button */}
-      <button
-        onClick={handleLogout}
-        className="w-full p-4 bg-red-50 rounded-xl text-red-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-100 transition"
-      >
-        <LogOut size={18} />
-        Logout
-      </button>
+      <div className="px-5 mb-10">
+        <button
+          onClick={handleLogout}
+          className="w-full p-5 bg-red-50 rounded-[2rem] text-red-600 font-extrabold text-sm flex items-center justify-center gap-3 hover:bg-red-100 transition-all active:scale-95 border border-red-100"
+        >
+          <LogOut size={20} strokeWidth={3} />
+          Sign Out of Hungr
+        </button>
+      </div>
 
       {/* Account Info */}
       <div className="mt-8 p-4 bg-gray-50 rounded-xl text-xs text-gray-500 text-center">

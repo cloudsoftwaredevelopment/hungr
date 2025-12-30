@@ -61,7 +61,8 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
           // Add gradient to each premium banner
           const bannersWithGradients = data.data.map((banner, idx) => ({
             ...banner,
-            gradient: gradients[idx % gradients.length]
+            gradient: gradients[idx % gradients.length],
+            is_premium: true
           }));
           setPremiumBanners(bannersWithGradients);
         }
@@ -150,20 +151,24 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
       )}
 
       {/* Category Grid */}
-      <div className="grid grid-cols-4 gap-4 mb-6 place-items-center">
+      <div className="grid grid-cols-4 gap-4 mb-8 px-1">
         {[
-          { label: 'Food', emoji: '🍔', bg: 'from-red-400 to-red-500' },
-          { label: 'Pabili', emoji: '🛒', bg: 'from-blue-400 to-blue-500' },
-          { label: 'Stores', emoji: '🏪', bg: 'from-purple-400 to-purple-500' },
-          { label: 'Ride', emoji: '🚗', bg: 'from-green-400 to-green-500' }
+          { label: 'Food', emoji: '🍔', bg: 'bg-red-500/10', borderColor: 'border-red-500/20' },
+          { label: 'Pabili', emoji: '🛒', bg: 'bg-blue-500/10', borderColor: 'border-blue-500/20' },
+          { label: 'Stores', emoji: '🏪', bg: 'bg-green-500/10', borderColor: 'border-green-500/20' },
+          { label: 'Ride', emoji: '🚗', bg: 'bg-amber-500/10', borderColor: 'border-amber-500/20' }
         ].map((cat) => (
           <button
             key={cat.label}
             onClick={() => handleCategoryClick(cat.label)}
-            className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer hover:opacity-90 hover:scale-105 transition-all active:scale-95 bg-gradient-to-br ${cat.bg} rounded-2xl p-2 shadow-lg hover:shadow-xl transition-shadow text-white w-14 h-14`}
+            className="flex flex-col items-center gap-2 group transition-all active:scale-95"
           >
-            <div className="text-lg">{cat.emoji}</div>
-            <span className="text-xs font-bold text-center leading-none">{cat.label}</span>
+            <div className={`w-16 h-16 ${cat.bg} backdrop-blur-xl rounded-[2rem] flex items-center justify-center shadow-[0_8px_32px_rgba(0,0,0,0.05)] group-hover:shadow-[0_8px_32px_rgba(0,0,0,0.1)] transition-all border ${cat.borderColor} relative overflow-hidden`}>
+              {/* Subtle inner gloss effect */}
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-50"></div>
+              <span className="text-3xl transform group-hover:scale-125 transition-all duration-300 drop-shadow-sm z-10">{cat.emoji}</span>
+            </div>
+            <span className="text-[12px] font-black text-gray-800 tracking-tight uppercase">{cat.label}</span>
           </button>
         ))}
       </div>
@@ -178,30 +183,48 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
           {banners.map((banner) => (
             <div
               key={banner.id}
-              className="min-w-full relative cursor-pointer group"
+              className="min-w-full relative cursor-pointer group h-[180px] overflow-hidden"
               onClick={() => {
                 if (banner.restaurantId) {
                   navigate(`/restaurant/${banner.restaurantId}`);
                 }
               }}
             >
-              <div className={`absolute inset-0 bg-gradient-to-r ${banner.gradient} opacity-90`}></div>
+              {/* Image Background */}
               <img
                 src={banner.image}
                 alt={banner.title}
-                className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-50 group-hover:scale-105 transition duration-500"
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
               />
-              <div className="relative p-5 text-white flex flex-col justify-center min-h-[140px]">
-                <div className="bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full w-fit mb-2 flex items-center gap-1">
-                  <TrendingUp size={10} /> SPONSORED
+
+              {/* Enhanced Gradient Overlay for readability while revealing brand */}
+              <div className={`absolute inset-0 bg-gradient-to-r ${(banner.gradient || 'from-orange-600').split(' ')[0]} via-transparent to-transparent opacity-90`}></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent"></div>
+
+              <div className="relative h-full p-6 text-white flex items-center justify-between gap-4">
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="bg-white/20 backdrop-blur-md text-white text-[9px] font-black px-2.5 py-1 rounded-full w-fit mb-3 flex items-center gap-1 uppercase tracking-widest border border-white/20">
+                    <TrendingUp size={10} /> {banner.is_premium ? 'Premium Partner' : 'Special Offer'}
+                  </div>
+                  <h3 className="text-2xl font-black leading-tight mb-1 drop-shadow-lg tracking-tight">
+                    {banner.title}
+                  </h3>
+                  <p className="text-[11px] font-bold text-white/90 mb-4 line-clamp-1 drop-shadow-md">{banner.description}</p>
+                  <button className="bg-white text-gray-900 text-[11px] font-black py-2 px-6 rounded-2xl w-fit hover:scale-105 transition-all shadow-xl active:scale-95">
+                    {banner.cta || 'Order Now'}
+                  </button>
                 </div>
-                <h3 className="text-2xl font-extrabold leading-tight mb-1">
-                  {banner.title} <br />{banner.subtitle}
-                </h3>
-                <p className="text-xs text-white/80 mb-3 opacity-90">{banner.description}</p>
-                <button className="bg-white text-orange-600 text-xs font-bold py-2 px-4 rounded-full w-fit hover:bg-orange-50 transition shadow-sm">
-                  {banner.cta}
-                </button>
+
+                {/* Optional floating logo for brand reinforcement - now with transparent bg for better integration */}
+                {banner.is_premium && (
+                  <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-[2rem] p-3 shadow-2xl flex items-center justify-center overflow-hidden border border-white/30 transform group-hover:rotate-6 transition-transform duration-500">
+                    <img
+                      src={banner.image}
+                      alt={banner.title}
+                      className="w-full h-full object-contain filter drop-shadow-md"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -222,52 +245,69 @@ const HomeView = ({ user, restaurants, loading, setView, setActiveRestaurant }) 
         </button>
 
         {/* Dot Indicators */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
           {banners.map((_, idx) => (
             <button
               key={idx}
               onClick={() => setCurrentBanner(idx)}
-              className={`w-2 h-2 rounded-full transition-all ${idx === currentBanner
-                ? 'bg-white w-4'
-                : 'bg-white/50 hover:bg-white/70'
+              className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentBanner
+                ? 'bg-white w-6 shadow-sm'
+                : 'bg-white/40 w-1.5 hover:bg-white/60'
                 }`}
             />
           ))}
         </div>
       </div>
 
-      <h2 className="font-bold text-lg mb-4 text-gray-800">Featured Restaurants</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-extrabold text-xl text-gray-900 tracking-tight">Featured Restaurants</h2>
+        <button onClick={() => navigate('/food')} className="text-orange-600 font-bold text-xs hover:underline">View All</button>
+      </div>
 
       {/* Restaurant List */}
-      <div className="grid grid-cols-2 gap-4 pb-20">
+      <div className="grid grid-cols-2 gap-4 pb-24 px-1">
         {loading ? (
-          <div className="col-span-2 flex justify-center py-10">
-            <Loader className="animate-spin text-orange-600" />
+          <div className="col-span-2 flex justify-center py-12">
+            <div className="relative">
+              <div className="w-10 h-10 border-4 border-orange-100 rounded-full"></div>
+              <div className="w-10 h-10 border-4 border-orange-600 rounded-full border-t-transparent animate-spin absolute top-0 left-0"></div>
+            </div>
           </div>
         ) : (
           restaurants.map(r => (
             <div
               key={r.id}
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer hover:shadow-md transition active:scale-[0.98]"
+              className="group bg-white rounded-[2rem] shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer border border-slate-100 active:scale-[0.98] flex flex-col"
               onClick={() => {
                 if (setActiveRestaurant) setActiveRestaurant(r);
                 navigate(`/restaurant/${r.id}`);
               }}
             >
-              <div className="h-28 bg-gray-200 relative">
-                <img src={r.image_url || "/api/placeholder/400/200"} className="w-full h-full object-cover" alt={r.name} />
-                <div className="absolute bottom-1 right-1 bg-white/90 px-1.5 py-0.5 rounded-md text-[10px] font-bold shadow-sm flex items-center gap-0.5 backdrop-blur-sm">
-                  <Clock size={10} className="text-orange-600" /> {r.delivery_time_min}-{r.delivery_time_max}m
-                </div>
-              </div>
-              <div className="p-3">
-                <div className="flex justify-between items-start gap-1">
-                  <h3 className="font-bold text-sm leading-tight text-gray-900 line-clamp-1">{r.name}</h3>
-                  <div className="flex items-center gap-0.5 bg-green-50 px-1.5 py-0.5 rounded text-green-700 font-bold text-[10px]">
-                    <Star size={8} fill="currentColor" /> {r.rating}
+              <div className="h-32 bg-gray-100 relative overflow-hidden">
+                <img
+                  src={r.image_url || "/api/placeholder/400/200"}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  alt={r.name}
+                />
+                <div className="absolute top-2.5 left-2.5">
+                  <div className="bg-white/95 backdrop-blur-md px-2 py-0.5 rounded-full text-[9px] font-black shadow-sm flex items-center gap-1 text-orange-600 border border-orange-100 uppercase tracking-tighter">
+                    <Clock size={10} /> {r.delivery_time_min}m
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1 line-clamp-1">{r.cuisine_type} • 1.2km</p>
+                <div className="absolute top-2.5 right-2.5">
+                  <div className="bg-emerald-500 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-lg flex items-center gap-0.5 border border-emerald-400">
+                    <Star size={8} fill="white" /> {r.rating}
+                  </div>
+                </div>
+              </div>
+              <div className="p-3.5 flex-1 flex flex-col justify-between">
+                <div>
+                  <h3 className="font-black text-sm text-gray-900 line-clamp-1 leading-tight mb-1">{r.name}</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{r.cuisine_type}</p>
+                </div>
+                <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-50">
+                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">Free Delivery</span>
+                </div>
               </div>
             </div>
           ))

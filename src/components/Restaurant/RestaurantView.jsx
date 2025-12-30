@@ -155,76 +155,94 @@ export default function RestaurantView({ addToCart }) {
             `}</style>
 
             {/* HEADER IMAGE */}
-            <div className="relative h-48 bg-gray-300">
-                <img src={restaurant.image_url} className="w-full h-full object-cover" alt={restaurant.name} />
-                <div className="absolute inset-0 bg-black/30"></div>
-                <button onClick={() => navigate(-1)} className="absolute top-4 left-4 p-2 bg-white/20 backdrop-blur-md rounded-full text-white hover:bg-white/30 transition">
-                    <ChevronLeft size={24} />
-                </button>
+            <div className="relative h-64 bg-slate-200 overflow-hidden">
+                <img
+                    src={restaurant.image_url}
+                    className="w-full h-full object-cover transition-transform duration-1000 scale-105"
+                    alt={restaurant.name}
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60"></div>
+
+                <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-center z-20">
+                    <button
+                        onClick={() => navigate(-1)}
+                        className="p-3 bg-black/30 backdrop-blur-xl rounded-2xl text-white hover:bg-black/50 transition-all active:scale-90 border border-white/20 shadow-lg"
+                    >
+                        <ChevronLeft size={24} />
+                    </button>
+                    {/* Share/Fav buttons could go here */}
+                </div>
+
                 {/* CLOSED Overlay */}
                 {isClosed && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <span className="bg-red-600 text-white text-lg font-bold px-6 py-2 rounded-full shadow-lg">
-                            CLOSED
-                        </span>
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center">
+                        <div className="bg-red-600/90 text-white text-xl font-black px-8 py-3 rounded-2xl shadow-2xl border border-red-500 animate-in zoom-in duration-300">
+                            CURRENTLY CLOSED
+                        </div>
+                        <p className="text-white/80 text-sm mt-3 font-medium max-w-xs">This merchant is not accepting orders at the moment. Try again later!</p>
                     </div>
                 )}
             </div>
 
-            {/* RESTAURANT INFO */}
-            <div className="bg-white p-4 -mt-6 rounded-t-3xl relative z-10 shadow-sm">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h1 className="text-2xl font-black text-gray-800 leading-tight">{restaurant.name}</h1>
-                        <p className="text-gray-500 text-sm mt-1 flex items-center gap-1">
-                            <MapPin size={14} /> {restaurant.cuisine_type} • 2.5km
-                        </p>
-                    </div>
-                    <div className={`px-2 py-1 rounded-lg flex flex-col items-center ${isClosed ? 'bg-red-50' : 'bg-green-50'}`}>
-                        {isClosed ? (
-                            <>
-                                <span className="text-red-700 font-bold text-sm">Closed</span>
-                                <span className="text-[10px] text-red-600/80">Currently</span>
-                            </>
-                        ) : (
-                            <>
-                                <div className="flex items-center gap-1 text-green-700 font-bold text-sm">
-                                    <Star size={12} fill="currentColor" /> {restaurant.rating}
+            {/* RESTAURANT INFO CARD */}
+            <div className="px-5 -mt-12 relative z-20">
+                <div className="bg-white rounded-[2.5rem] p-6 shadow-2xl shadow-slate-200/60 border border-slate-50">
+                    <div className="flex justify-between items-start gap-4">
+                        <div className="flex-1">
+                            <h1 className="text-3xl font-black text-gray-900 tracking-tight leading-tight mb-2">{restaurant.name}</h1>
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                                <span className="bg-slate-100 px-2 py-1 rounded-lg">{restaurant.cuisine_type}</span>
+                                <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                <div className="flex items-center gap-1 text-orange-600 bg-orange-50 px-2 py-1 rounded-lg border border-orange-100">
+                                    <MapPin size={12} /> 2.5km Away
                                 </div>
-                                <span className="text-[10px] text-green-600/80">Rating</span>
-                            </>
+                            </div>
+                        </div>
+                        {!isClosed && (
+                            <div className="bg-emerald-500 text-white p-3 rounded-2xl shadow-lg border border-emerald-400 text-center min-w-[60px]">
+                                <div className="flex items-center justify-center gap-1 font-black text-lg">
+                                    <Star size={16} fill="white" /> {restaurant.rating}
+                                </div>
+                                <div className="text-[10px] font-bold opacity-80 uppercase tracking-tighter">Rating</div>
+                            </div>
                         )}
                     </div>
-                </div>
 
-                {/* Closed Notice Banner */}
-                {isClosed && (
-                    <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-3 text-center">
-                        <p className="text-red-700 font-bold text-sm">This restaurant is currently closed</p>
-                        <p className="text-red-500 text-xs mt-0.5">Please check back later or browse other restaurants</p>
-                    </div>
-                )}
-
-                <div className="mt-4 flex gap-4 text-xs text-gray-500 border-t border-b border-gray-100 py-3">
-                    <div className="flex items-center gap-1.5">
-                        <Clock size={14} className="text-orange-500" />
-                        <span>{restaurant.delivery_time_min}-{restaurant.delivery_time_max} mins</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <ShoppingBag size={14} className="text-orange-500" />
-                        <span>Delivery: ₱49</span>
+                    <div className="mt-6 flex items-center justify-between border-t border-slate-50 pt-5">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 border border-orange-100">
+                                <Clock size={20} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Delivery Time</p>
+                                <p className="text-sm font-black text-slate-800 tracking-tight">
+                                    {restaurant.delivery_time_min}-{restaurant.delivery_time_max} mins
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 border border-emerald-100">
+                                <ShoppingBag size={20} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Delivery Fee</p>
+                                <p className="text-sm font-black text-slate-800 tracking-tight text-emerald-600">₱49.00</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* MENU CATEGORIES */}
-            <div className="sticky top-0 bg-white z-20 shadow-sm px-4 py-2 mb-2">
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <div className="sticky top-0 bg-white/90 backdrop-blur-xl z-50 border-b border-slate-100 py-3 mt-4">
+                <div className="flex gap-3 overflow-x-auto no-scrollbar px-5">
                     {categories.map(cat => (
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${activeCategory === cat ? 'bg-gray-900 text-white border-gray-900' : 'bg-gray-50 text-gray-500 border-gray-200'
+                            className={`px-5 py-2 rounded-2xl text-[13px] font-black whitespace-nowrap transition-all duration-300 border shadow-sm active:scale-95 ${activeCategory === cat
+                                ? 'bg-orange-600 text-white border-orange-500 shadow-orange-600/20'
+                                : 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-100'
                                 }`}
                         >
                             {cat}
@@ -234,40 +252,42 @@ export default function RestaurantView({ addToCart }) {
             </div>
 
             {/* MENU LIST */}
-            <div className="p-4 space-y-4">
+            <div className="p-5 space-y-6">
                 {filteredMenu.map(item => (
-                    <div key={item.id} className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex gap-3 relative">
-                        <div className="w-24 h-24 bg-gray-100 rounded-xl overflow-hidden shrink-0 relative">
+                    <div key={item.id} className="bg-white rounded-[2rem] shadow-sm border border-slate-50 flex gap-4 p-4 relative overflow-hidden active:bg-slate-50 transition-colors">
+                        <div className="w-28 h-28 bg-slate-100 rounded-[1.5rem] overflow-hidden shrink-0 relative shadow-inner">
                             {/* PROMO badge */}
                             {item.promotional_price && parseFloat(item.promotional_price) > 0 && (
-                                <div className="absolute top-1 left-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-sm z-10">
+                                <div className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-lg shadow-lg z-10 border border-red-500">
                                     PROMO
                                 </div>
                             )}
-                            {/* Placeholder for menu item images if missing */}
-                            <img src={item.image_url ? `${item.image_url}?v=2` : "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"} className="w-full h-full object-cover" alt={item.name} />
+                            <img src={item.image_url ? `${item.image_url}?v=2` : "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWRlZGVkIi8+PC9zdmc+"} className="w-full h-full object-cover transition-transform duration-500 hover:scale-110" alt={item.name} />
                         </div>
-                        <div className="flex-1 flex flex-col justify-between">
+                        <div className="flex-1 flex flex-col justify-between py-1">
                             <div>
-                                <h3 className="font-bold text-gray-800 line-clamp-2">{item.name}</h3>
-                                <p className="text-xs text-gray-500 line-clamp-2 mt-1">{item.description}</p>
+                                <h3 className="font-extrabold text-gray-900 text-[15px] leading-snug line-clamp-2 mb-1 tracking-tight">{item.name}</h3>
+                                <p className="text-[11px] text-slate-500 font-medium line-clamp-2 leading-relaxed tracking-tight">{item.description}</p>
                             </div>
-                            <div className="flex justify-between items-end mt-2">
-                                <div className="flex items-baseline gap-2">
+                            <div className="flex justify-between items-center mt-3">
+                                <div className="flex flex-col">
                                     {item.promotional_price && parseFloat(item.promotional_price) > 0 ? (
-                                        <>
-                                            <span className="font-bold text-orange-600">₱{parseFloat(item.promotional_price).toFixed(2)}</span>
-                                            <span className="text-xs text-gray-400 line-through">₱{parseFloat(item.price).toFixed(2)}</span>
-                                        </>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-black text-orange-600 text-lg">₱{parseFloat(item.promotional_price).toFixed(2)}</span>
+                                            <span className="text-[10px] text-slate-400 line-through font-bold">₱{parseFloat(item.price).toFixed(2)}</span>
+                                        </div>
                                     ) : (
-                                        <span className="font-bold text-orange-600">₱{parseFloat(item.price).toFixed(2)}</span>
+                                        <span className="font-black text-gray-900 text-lg">₱{parseFloat(item.price).toFixed(2)}</span>
                                     )}
                                 </div>
                                 <button
                                     onClick={(e) => !isClosed && handleAdd(item, e)}
                                     disabled={isClosed}
-                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isClosed ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-orange-100 text-orange-600 hover:bg-orange-600 hover:text-white active:scale-90'}`}>
-                                    <Plus size={18} />
+                                    className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all shadow-lg active:scale-90 ${isClosed
+                                        ? 'bg-slate-100 text-slate-300 shadow-none'
+                                        : 'bg-orange-600 text-white shadow-orange-600/20 hover:shadow-orange-600/40 hover:scale-105'}`}
+                                >
+                                    <Plus size={20} strokeWidth={3} />
                                 </button>
                             </div>
                         </div>
@@ -275,14 +295,26 @@ export default function RestaurantView({ addToCart }) {
                 ))}
             </div>
 
-            {/* Floating Cart Button */}
-            <div className="fixed bottom-24 right-4 z-40" ref={cartRef}>
+            {/* Floating Cart Button Upgrade: Bottom Bar Style */}
+            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-[90%] md:max-w-xs z-50 pointer-events-none" ref={cartRef}>
                 <button
                     onClick={() => navigate('/cart')}
-                    className="bg-orange-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition active:scale-95 flex items-center justify-center"
-                    style={flyingItems.length > 0 ? { animation: 'cartBounce 0.3s ease-in-out' } : {}}
+                    className="w-full bg-slate-900 text-white p-5 rounded-[2rem] shadow-2xl hover:scale-105 transition-all active:scale-95 flex items-center justify-between gap-4 pointer-events-auto group relative overflow-hidden"
+                    style={flyingItems.length > 0 ? { animation: 'cartBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)' } : {}}
                 >
-                    <ShoppingBag size={24} />
+                    <div className="absolute inset-0 bg-gradient-to-r from-orange-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="flex items-center gap-4 relative z-10">
+                        <div className="w-10 h-10 bg-orange-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
+                            <ShoppingBag size={20} className="text-white" strokeWidth={3} />
+                        </div>
+                        <div className="text-left">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Your Basket</p>
+                            <p className="text-sm font-black tracking-tight">View Order Details</p>
+                        </div>
+                    </div>
+                    <div className="bg-white/10 px-4 py-2 rounded-xl text-xs font-black border border-white/10 group-hover:bg-orange-600 transition-colors">
+                        GO TO CART
+                    </div>
                 </button>
             </div>
 
