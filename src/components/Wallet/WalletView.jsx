@@ -318,7 +318,7 @@ const WalletView = () => {
       {
         showTopUp && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-6 animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
+            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl px-6 pt-6 pb-24 animate-in slide-in-from-bottom duration-300 max-h-[92vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold">Top Up Wallet</h3>
                 <button onClick={() => setShowTopUp(false)} className="text-gray-400">
