@@ -449,6 +449,36 @@ const pool = mysql.createPool({
             console.log("restaurants location columns might already exist.");
         }
 
+        // NEW: Add commission_rate and marketing settings to restaurants
+        try {
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS commission_rate DECIMAL(5,2) DEFAULT 12.00
+            `);
+            await poolPromise.execute(`
+                ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            `);
+            console.log("restaurants commission columns checked/added.");
+        } catch (e) {
+            console.log("restaurants commission columns error/exists.");
+        }
+
+        // NEW: Create merchant_campaigns table
+        await poolPromise.execute(`
+            CREATE TABLE IF NOT EXISTS merchant_campaigns (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                restaurant_id INT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                discount_percentage DECIMAL(5,2) DEFAULT 0.00,
+                is_co_funded TINYINT(1) DEFAULT 1,
+                is_active TINYINT(1) DEFAULT 0,
+                start_date TIMESTAMP NULL,
+                end_date TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB;
+        `);
+        console.log("merchant_campaigns table checked/added.");
+
         // Add location columns to merchants (linked to restaurants)
         try {
             await poolPromise.execute(`
@@ -655,6 +685,7 @@ app.get('/api/orders/history', verifyToken, async (req, res) => {
                 o.status,
                 o.created_at,
                 o.rider_id,
+                o.dispatch_code,
                 o.delivery_eta_arrival,
                 r.name as merchant_name,
                 'food' as type
@@ -703,7 +734,7 @@ app.get('/api/orders/active', verifyToken, async (req, res) => {
         // Fetch most recent active food order
         const [foodOrders] = await db.execute(`
             SELECT o.id, o.status, o.total_amount, r.name as merchant_name, 'food' as type, o.created_at,
-            o.delivery_eta_arrival,
+            o.delivery_eta_arrival, o.dispatch_code,
             p.accepted_at,
             JSON_ARRAYAGG(
                 JSON_OBJECT('id', oi.id, 'name', m.name, 'quantity', oi.quantity, 'price', oi.price_at_time, 'preparation_time_min', m.preparation_time_min, 'preparation_time_sec', m.preparation_time_sec)
@@ -1134,6 +1165,24 @@ app.patch('/api/riders/:id/status', verifyToken, async (req, res) => {
         }
         sendSuccess(res, { isOnline }, "Status updated");
     } catch (err) {
+        console.error("[Status] Update failed:", err);
+        sendError(res, 500, "Update failed");
+    }
+});
+
+// POST Alternative for status (some proxies block PATCH)
+app.post('/api/riders/:id/status', verifyToken, async (req, res) => {
+    try {
+        const { isOnline, latitude, longitude } = req.body;
+        if (latitude && longitude) {
+            await db.execute('UPDATE riders SET is_online = ?, current_latitude = ?, current_longitude = ? WHERE id = ?',
+                [isOnline ? 1 : 0, latitude, longitude, req.params.id]);
+        } else {
+            await db.execute('UPDATE riders SET is_online = ? WHERE id = ?', [isOnline ? 1 : 0, req.params.id]);
+        }
+        sendSuccess(res, { isOnline }, "Status updated");
+    } catch (err) {
+        console.error("[Status-POST] Update failed:", err);
         sendError(res, 500, "Update failed");
     }
 });
@@ -1151,6 +1200,25 @@ app.patch('/api/riders/:id/location', verifyToken, async (req, res) => {
         );
         sendSuccess(res, { latitude, longitude }, "Location updated");
     } catch (err) {
+        console.error("[Location] Update failed:", err);
+        sendError(res, 500, "Location update failed", "DB_ERROR", err);
+    }
+});
+
+// POST Alternative for location
+app.post('/api/riders/:id/location', verifyToken, async (req, res) => {
+    try {
+        const { latitude, longitude } = req.body;
+        if (!latitude || !longitude) {
+            return sendError(res, 400, "Latitude and longitude required");
+        }
+        await db.execute(
+            'UPDATE riders SET current_latitude = ?, current_longitude = ?, last_location_update = NOW() WHERE id = ?',
+            [latitude, longitude, req.params.id]
+        );
+        sendSuccess(res, { latitude, longitude }, "Location updated");
+    } catch (err) {
+        console.error("[Location-POST] Update failed:", err);
         sendError(res, 500, "Location update failed", "DB_ERROR", err);
     }
 });
@@ -1683,6 +1751,7 @@ apiRouter.get('/merchant/orders', verifyToken, async (req, res) => {
         // Fetch regular restaurant orders with accepted_at from prepared_orders
         const restQuery = `
             SELECT o.id, o.total_amount, o.payment_method, o.status, o.created_at, o.dispatch_code, o.rider_id,
+            u.username as customer_name,
             u.address as delivery_address, 
             o.instructions, 
             u.phone_number as customer_phone,
@@ -1922,7 +1991,7 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
                 // Emit notification to each rider via Socket.IO
                 closestRiders.forEach(rider => {
                     io.emit(`rider_${rider.id}_new_order`, {
-                        orderId,
+                        orderId: parseInt(orderId),
                         orderType: type || 'food',
                         restaurantId,
                         restaurantName: restName,
@@ -1973,7 +2042,7 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
                     closestRiders.forEach(rider => {
                         // New: Emit to rider's dedicated room (industry standard)
                         io.to(`rider_${rider.id}`).emit('new_order', {
-                            orderId,
+                            orderId: parseInt(orderId),
                             orderType: type || 'food',
                             restaurantId,
                             restaurantName: restName,
@@ -1987,7 +2056,7 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
 
                         // Legacy: Also emit to rider-specific event
                         io.emit(`rider_${rider.id}_new_order`, {
-                            orderId,
+                            orderId: parseInt(orderId),
                             orderType: type || 'food',
                             restaurantId,
                             restaurantName: restName,
@@ -2001,7 +2070,7 @@ apiRouter.post('/merchant/orders/:id/status', verifyToken, async (req, res) => {
 
                     // Also emit to general rider feed
                     io.emit('new_pickup', {
-                        orderId,
+                        orderId: parseInt(orderId),
                         restaurantName: restName,
                         restaurantAddress: restAddress,
                         totalAmount: parseFloat(totalAmount).toFixed(2),
@@ -2072,6 +2141,17 @@ apiRouter.post('/merchant/orders/:id/notify-riders', verifyToken, async (req, re
             [dispatchCode, initialRadius, orderId]
         );
 
+        // Notify Customer about the dispatch code via Socket.IO
+        const [userQuery] = await db.execute('SELECT user_id FROM orders WHERE id = ?', [orderId]);
+        if (userQuery.length > 0) {
+            io.emit(`user_${userQuery[0].user_id}_order_update`, {
+                orderId: parseInt(orderId),
+                status: 'assigned', // Keep as assigned or current status, but include dispatch code
+                dispatch_code: dispatchCode,
+                message: `Dispatch Code Generated: ${dispatchCode}. Notifying nearby riders.`
+            });
+        }
+
         const restLat = parseFloat(restaurantRows[0].latitude);
         const restLon = parseFloat(restaurantRows[0].longitude);
         const restName = restaurantRows[0].name;
@@ -2099,7 +2179,7 @@ apiRouter.post('/merchant/orders/:id/notify-riders', verifyToken, async (req, re
         // Emit notification to each rider via Socket.IO
         closestRiders.forEach(rider => {
             io.to(`rider_${rider.id}`).emit('new_order', {
-                orderId,
+                orderId: parseInt(orderId),
                 orderType: type || 'food',
                 restaurantId,
                 restaurantName: restName,
@@ -2171,6 +2251,106 @@ apiRouter.get('/merchant/orders/by-dispatch-code', verifyToken, async (req, res)
     } catch (err) {
         console.error("Find by dispatch code error:", err);
         sendError(res, 500, 'Failed to find orders');
+    }
+});
+
+// --- MARKETING & CAMPAIGN ROUTES ---
+
+// Get Merchant Marketing Stats
+apiRouter.get('/merchant/marketing/stats', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+
+        const [results] = await db.execute(`
+            SELECT commission_rate, join_date, name
+            FROM restaurants 
+            WHERE id = ?
+        `, [restaurantId]);
+
+        if (results.length === 0) return sendError(res, 404, 'Restaurant not found');
+
+        const restaurant = results[0];
+
+        // Calculate months since joining
+        const joinDate = new Date(restaurant.join_date);
+        const now = new Date();
+        const monthsJoined = (now.getFullYear() - joinDate.getFullYear()) * 12 + (now.getMonth() - joinDate.getMonth());
+
+        // Dummy stats for total saved vs competitors
+        // In a real app, we'd sum (CompetitorCommission - hungrCommission) for all completed orders
+        const [orderStats] = await db.execute(`
+            SELECT COUNT(*) as total_orders, SUM(total_amount) as total_sales
+            FROM orders 
+            WHERE restaurant_id = ? AND status = 'completed'
+        `, [restaurantId]);
+
+        const sales = parseFloat(orderStats[0].total_sales || 0);
+        const hungrCommission = sales * (parseFloat(restaurant.commission_rate) / 100);
+        const competitorAvgCommission = sales * 0.25; // Assuming 25% avg
+        const totalSaved = competitorAvgCommission - hungrCommission;
+
+        sendSuccess(res, {
+            commissionRate: restaurant.commission_rate,
+            joinDate: restaurant.join_date,
+            monthsJoined,
+            completedOrders: orderStats[0].total_orders,
+            totalSales: sales.toFixed(2),
+            totalSaved: Math.max(0, totalSaved).toFixed(2),
+            isNewMerchantPromo: monthsJoined < 6
+        });
+    } catch (err) {
+        console.error("Marketing stats error:", err);
+        sendError(res, 500, 'Failed to fetch marketing stats');
+    }
+});
+
+// Get Merchant Campaigns
+apiRouter.get('/merchant/campaigns', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+
+        const [campaigns] = await db.execute(`
+            SELECT * FROM merchant_campaigns 
+            WHERE restaurant_id = ? 
+            ORDER BY created_at DESC
+        `, [restaurantId]);
+
+        sendSuccess(res, campaigns);
+    } catch (err) {
+        console.error("Fetch campaigns error:", err);
+        sendError(res, 500, 'Failed to fetch campaigns');
+    }
+});
+
+// Create/Update Campaign
+apiRouter.post('/merchant/campaigns', verifyToken, async (req, res) => {
+    try {
+        const { restaurantId, role } = req.user;
+        const { id, name, discountPercentage, isCoFunded, isActive, startDate, endDate } = req.body;
+
+        if (role !== 'merchant') return sendError(res, 403, 'Access denied');
+
+        if (id) {
+            // Update
+            await db.execute(`
+                UPDATE merchant_campaigns 
+                SET name = ?, discount_percentage = ?, is_co_funded = ?, is_active = ?, start_date = ?, end_date = ?
+                WHERE id = ? AND restaurant_id = ?
+            `, [name, discountPercentage, isCoFunded ? 1 : 0, isActive ? 1 : 0, startDate || null, endDate || null, id, restaurantId]);
+            sendSuccess(res, { id }, 'Campaign updated');
+        } else {
+            // Create
+            const [result] = await db.execute(`
+                INSERT INTO merchant_campaigns (restaurant_id, name, discount_percentage, is_co_funded, is_active, start_date, end_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `, [restaurantId, name, discountPercentage, isCoFunded ? 1 : 0, isActive ? 1 : 0, startDate || null, endDate || null]);
+            sendSuccess(res, { id: result.insertId }, 'Campaign created');
+        }
+    } catch (err) {
+        console.error("Save campaign error:", err);
+        sendError(res, 500, 'Failed to save campaign');
     }
 });
 

@@ -104,7 +104,14 @@ const ActiveOrderCard = ({ order, onClick }) => {
                 <div className="flex justify-between items-start">
                     <div>
                         <h4 className="font-black text-gray-900 text-[15px] leading-tight mb-0.5 tracking-tight group-hover:text-orange-600 transition-colors">{statusText}</h4>
-                        <p className="text-xs text-slate-500 font-semibold italic">From {order.merchant_name}</p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-xs text-slate-500 font-semibold italic truncate max-w-[120px]">From {order.merchant_name}</p>
+                            {order.dispatch_code && (
+                                <span className="text-[10px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded-md border border-blue-200 uppercase tracking-tighter">
+                                    #{order.dispatch_code}
+                                </span>
+                            )}
+                        </div>
                     </div>
                     {/* TIME DISPLAY (PREP COUNTDOWN or RIDER ETA) */}
                     {(['preparing', 'assigned', 'preparing_order'].includes(order.status?.toLowerCase())) ? (

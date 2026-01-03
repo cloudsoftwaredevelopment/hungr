@@ -264,8 +264,12 @@ const TransactionsView = () => {
                   <h3 className="font-black text-[15px] text-gray-900 leading-snug tracking-tight truncate max-w-[150px]">{order.merchant_name || 'Merchant Partner'}</h3>
                   <div className="flex items-center gap-2 mt-0.5">
                     <p className="text-[11px] font-bold text-slate-400">{new Date(order.created_at).toLocaleDateString()}</p>
-                    <p className="text-[11px] font-bold text-slate-300">•</p>
-                    <p className="text-[11px] font-bold text-slate-400">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    {order.dispatch_code && (
+                      <>
+                        <p className="text-[11px] font-bold text-slate-300">•</p>
+                        <p className="text-[11px] font-black text-blue-600 uppercase">#{order.dispatch_code}</p>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
