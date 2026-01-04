@@ -10,6 +10,7 @@
  * - TOTP (Google Authenticator) for withdrawals
  */
 
+import { env } from './src/config/env.js';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
@@ -226,7 +227,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             }
 
             // Generate request signature for verification
-            const requestSecret = process.env.REQUEST_SECRET || 'default_secret';
+            const requestSecret = env.REQUEST_SECRET;
             const signature = crypto.createHmac('sha256', requestSecret)
                 .update(`${merchantId}:${amount}:${idempotencyKey}`)
                 .digest('hex');
@@ -665,7 +666,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             const adminId = req.user.id;
 
             // Verify system key (dual authorization)
-            const expectedKey = process.env.WALLET_SYSTEM_KEY;
+            const expectedKey = env.WALLET_SYSTEM_KEY;
             if (!expectedKey || !systemKey) {
                 return sendError(res, 400, 'System key is required for approval');
             }
@@ -1069,7 +1070,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             const { systemKey, notes } = req.body;
 
             // Dual authorization check
-            if (systemKey !== process.env.WALLET_SYSTEM_KEY) {
+            if (systemKey !== env.WALLET_SYSTEM_KEY) {
                 return sendError(res, 403, 'Invalid system key', 'AUTH_ERROR');
             }
 
@@ -1362,7 +1363,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             const { systemKey, notes } = req.body;
 
             // Dual authorization check
-            if (systemKey !== process.env.WALLET_SYSTEM_KEY) {
+            if (systemKey !== env.WALLET_SYSTEM_KEY) {
                 return sendError(res, 403, 'Invalid system key', 'AUTH_ERROR');
             }
 
@@ -2185,7 +2186,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             const adminId = req.user.id;
             const { systemKey, notes } = req.body;
 
-            if (systemKey !== process.env.WALLET_SYSTEM_KEY) {
+            if (systemKey !== env.WALLET_SYSTEM_KEY) {
                 return sendError(res, 403, 'Invalid system key', 'AUTH_ERROR');
             }
 
@@ -2266,7 +2267,7 @@ export function registerWalletRoutes(apiRouter, db, verifyToken, sendSuccess, se
             const adminId = req.user.id;
             const { systemKey, notes } = req.body;
 
-            if (systemKey !== process.env.WALLET_SYSTEM_KEY) {
+            if (systemKey !== env.WALLET_SYSTEM_KEY) {
                 return sendError(res, 403, 'Invalid system key', 'AUTH_ERROR');
             }
 
