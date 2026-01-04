@@ -3,9 +3,10 @@ module.exports = {
         {
             name: 'hungr-api',
             script: 'server.js',
-            instances: 1,
+            instances: 'max',
+            exec_mode: 'cluster',
             autorestart: true,
-            watch: true,
+            watch: false,
             ignore_watch: ['node_modules', 'uploads', 'logs'],
             max_memory_restart: '1G',
             env: {

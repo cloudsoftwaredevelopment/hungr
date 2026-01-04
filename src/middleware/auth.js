@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 import { sendError } from '../utils/response.js';
 
 export const verifyToken = (req, res, next) => {
-    const token = req.headers['authorization']?.split(' ')[1] || req.query.token;
+    const token = req.headers['authorization']?.split(' ')[1];
     if (!token) return sendError(res, 401, 'No token provided', 'AUTH_ERROR');
 
     jwt.verify(token, env.JWT_SECRET, (err, decoded) => {

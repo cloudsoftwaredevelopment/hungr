@@ -22,5 +22,9 @@ export const env = {
     WALLET_SYSTEM_KEY: process.env.WALLET_SYSTEM_KEY || 'hungr-admin-2024',
     REQUEST_SECRET: process.env.REQUEST_SECRET || 'default_secret',
     INTERNAL_API_KEY: process.env.INTERNAL_API_KEY || 'internal_secret_' + (process.env.start_time || Date.now()), // Auto-generated if missing for dev
+    REDIS_URL: process.env.REDIS_URL,
+    CORS_ORIGINS: process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(',')
+        : ['http://localhost:3000', 'http://localhost:5173', 'https://nfcrevolution.com'],
     // Add other vars as needed
 };

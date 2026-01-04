@@ -1,4 +1,6 @@
 import express from 'express';
+import 'express-async-errors';
+import { env } from './config/env.js';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import cookieParser from 'cookie-parser';
@@ -19,7 +21,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:5173', 'https://nfcrevolution.com'],
+    origin: env.CORS_ORIGINS,
     credentials: true
 }));
 
@@ -30,15 +32,16 @@ const limiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 });
-// Apply limiter globally for now, or specific routes later
-// app.use(limiter); 
+// Apply limiter globally
+app.use(limiter);
 
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(cookieParser());
 
 // Debug Logging
 app.use((req, res, next) => {
-    console.log(`[Request] ${req.method} ${req.url}`);
+    // Use req.path to avoid logging query parameters (e.g. ?token=...)
+    console.log(`[Request] ${req.method} ${req.path}`);
     next();
 });
 
@@ -64,6 +67,15 @@ app.get('/hungr/admin-wallet.html', (req, res) => {
 });
 app.get('/admin-wallet', (req, res) => {
     res.sendFile(path.join(rootDir, 'admin-wallet.html'));
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+    console.error('[Global Error]', err);
+    res.status(err.status || 500).json({
+        error: err.message || 'Internal Server Error',
+        code: err.code || 'INTERNAL_ERROR'
+    });
 });
 
 export default app;

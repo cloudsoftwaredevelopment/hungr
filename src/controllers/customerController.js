@@ -189,9 +189,19 @@ export const getPremiumRestaurants = async (req, res) => {
     }
 };
 
+import { cacheGet, cacheSet } from '../services/redisService.js';
+
 export const getRestaurants = async (req, res) => {
     try {
+        const cacheKey = 'restaurants:all';
+        const cached = await cacheGet(cacheKey);
+        if (cached) {
+            return sendSuccess(res, cached);
+        }
+
         const [results] = await db.query('SELECT * FROM restaurants ORDER BY rating DESC');
+        await cacheSet(cacheKey, results, 300); // Cache for 5 mins
+
         sendSuccess(res, results);
     } catch (err) {
         sendError(res, 500, 'DB Error');
@@ -201,6 +211,13 @@ export const getRestaurants = async (req, res) => {
 export const getRestaurantMenu = async (req, res) => {
     try {
         const idOrSlug = req.params.idOrSlug;
+        const cacheKey = `restaurant:menu:${idOrSlug}`;
+
+        const cached = await cacheGet(cacheKey);
+        if (cached) {
+            return sendSuccess(res, cached);
+        }
+
         const isNumeric = /^\d+$/.test(idOrSlug);
 
         let restaurantRows;
@@ -215,7 +232,10 @@ export const getRestaurantMenu = async (req, res) => {
 
         const [menuItems] = await db.query('SELECT * FROM menu_items WHERE restaurant_id = ? AND is_available = 1 ORDER BY category, name', [restaurant.id]);
 
-        sendSuccess(res, { restaurant, menu: menuItems });
+        const responseData = { restaurant, menu: menuItems };
+        await cacheSet(cacheKey, responseData, 300); // Cache for 5 mins
+
+        sendSuccess(res, responseData);
     } catch (err) {
         sendError(res, 500, 'DB Error', 'DB_ERROR', err);
     }
@@ -353,40 +373,18 @@ export const getActiveOrder = async (req, res) => {
     }
 };
 
+import { OrderService } from '../services/orderService.js';
+
 export const createPabiliOrder = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { store_id, items, estimated_cost, delivery_address } = req.body;
-
-        if (!store_id || !items || !items.length || !estimated_cost) {
+        if (!req.body.store_id || !req.body.items || !req.body.items.length || !req.body.estimated_cost) {
             return sendError(res, 400, "Missing required fields");
         }
 
-        const [orderResult] = await db.execute(
-            `INSERT INTO pabili_orders (user_id, store_id, estimated_cost, delivery_address, status) VALUES (?, ?, ?, ?, 'pending')`,
-            [userId, store_id, estimated_cost, delivery_address || '']
-        );
-        const pabiliId = orderResult.insertId;
-
-        for (const item of items) {
-            await db.execute(
-                `INSERT INTO pabili_items (pabili_order_id, name, quantity) VALUES (?, ?, ?)`,
-                [pabiliId, item.name, item.quantity]
-            );
-        }
-
-        // Find Riders (Mock Logic)
-        const [riders] = await db.query(`
-            SELECT r.id, r.name, w.balance 
-            FROM riders r 
-            JOIN wallets w ON r.user_id = w.user_id 
-            WHERE r.is_online = 1 AND w.balance >= ? 
-            LIMIT 10
-        `, [estimated_cost]);
-
-        console.log(`[Pabili] Order #${pabiliId} created. Notifying ${riders.length} riders:`, riders.map(r => r.name));
-
-        sendSuccess(res, { orderId: pabiliId, ridersNotified: riders.length }, "Order created and riders notified");
+        const result = await OrderService.createPabiliOrder(userId, req.body);
+        console.log(`[Pabili] Order #${result.orderId} created. Notifying ${result.riders.length} riders.`);
+        sendSuccess(res, { orderId: result.orderId, ridersNotified: result.riders.length }, "Order created and riders notified");
 
     } catch (err) {
         sendError(res, 500, "Failed to create Pabili order", "DB_ERROR", err);
@@ -397,21 +395,9 @@ export const cancelPabiliOrder = async (req, res) => {
     try {
         const orderId = req.params.id;
         const { rider_id, reason } = req.body;
-
-        await db.execute(
-            `INSERT INTO cancelled_orders (order_id, order_type, rider_id, reason) VALUES (?, 'pabili', ?, ?)`,
-            [orderId, rider_id, reason || 'Rider cancelled']
-        );
-
-        await db.execute(
-            `UPDATE pabili_orders SET status = 'pending', rider_id = NULL WHERE id = ?`,
-            [orderId]
-        );
-
+        await OrderService.cancelPabiliOrder(orderId, rider_id, reason);
         console.log(`[Pabili] Order #${orderId} was cancelled by Rider #${rider_id}. Status reset to PENDING.`);
-
         sendSuccess(res, null, "Order cancelled and reset to pending");
-
     } catch (err) {
         sendError(res, 500, "Cancellation failed");
     }
@@ -420,200 +406,36 @@ export const cancelPabiliOrder = async (req, res) => {
 export const placeOrder = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { restaurantId, storeId, orderType, items, total, paymentMethod, instructions, substitutionPreference } = req.body;
         const io = getIO(req);
 
-        // Fetch user details for real-time notifications to merchants
+        // Fetch user details for service
         const [[user]] = await db.execute('SELECT username, phone_number FROM users WHERE id = ?', [userId]);
-        const customerName = user ? user.username : 'Customer';
-        const customerPhone = user ? user.phone_number : 'N/A';
 
-        // Balance Check
-        const normalizedPaymentMethod = (paymentMethod || '').toLowerCase();
-        if (normalizedPaymentMethod === 'wallet' || normalizedPaymentMethod === 'coins') {
-            try {
-                const balance = await getCustomerBalance(userId, normalizedPaymentMethod);
-                const amountToDeduct = parseFloat(total);
+        try {
+            const result = await OrderService.placeOrder(userId, user || {}, req.body, io);
 
-                if (isNaN(amountToDeduct) || amountToDeduct <= 0) {
-                    return sendError(res, 400, "Invalid order total amount");
-                }
-
-                if (balance < amountToDeduct) {
-                    return sendError(res, 400, `Insufficient ${normalizedPaymentMethod} balance. Required: ₱${amountToDeduct}, Available: ₱${balance}`, 'INSUFFICIENT_FUNDS');
-                }
-                console.log(`[Checkout] Balance check passed for user #${userId} (${normalizedPaymentMethod}): ₱${balance}`);
-            } catch (err) {
-                console.error(`[Checkout Check Error] ${err.message}`);
-                return sendError(res, 500, "Payment validation failed");
+            if (req.body.orderType === 'ride') {
+                console.log(`[RideOrder #${result.orderId}] Created.`);
+                return sendSuccess(res, { orderId: result.orderId, ridersNotified: result.ridersNotified }, "Ride booked successfully");
+            } else if (req.body.orderType === 'store' && req.body.storeId) {
+                console.log(`[StoreOrder #${result.orderId}] Created.`);
+                return sendSuccess(res, { orderId: result.orderId, ridersNotified: result.ridersNotified }, "Order placed successfully");
+            } else {
+                console.log(`[FoodOrder #${result.orderId}] Created.`);
+                return sendSuccess(res, { orderId: result.orderId }, "Food Order placed successfully");
             }
+
+        } catch (err) {
+            if (err.code === 'INSUFFICIENT_FUNDS') {
+                return sendError(res, 400, err.message, 'INSUFFICIENT_FUNDS');
+            }
+            if (err.message === 'Restaurant is currently offline/closed.') {
+                return sendError(res, 400, err.message);
+            }
+            console.error(`[OrderService Error] ${err.message}`);
+            throw err; // Let global handler or generic catch handle generic errors
         }
 
-        if (orderType === 'store' && storeId) {
-            // === HANDLING STORE ORDER ===
-            const [addrRows] = await db.execute('SELECT * FROM user_addresses WHERE user_id = ? AND is_default = 1', [userId]);
-            const deliveryAddress = addrRows.length > 0 ? addrRows[0].address : "User Location";
-
-            // Payment method normalization
-            let normalizedPayment = normalizedPaymentMethod;
-            if (normalizedPayment === 'cash' || !normalizedPayment) normalizedPayment = 'COD';
-            else if (normalizedPayment === 'wallet') normalizedPayment = 'Wallet';
-            else if (normalizedPayment === 'coins') normalizedPayment = 'Coins';
-            else normalizedPayment = normalizedPayment.toUpperCase();
-
-            const [orderResult] = await db.execute(
-                `INSERT INTO store_paid_orders (user_id, store_id, total_amount, payment_method, delivery_address, status, instructions, substitution_preference) VALUES (?, ?, ?, ?, ?, 'paid', ?, ?)`,
-                [userId, storeId, total, normalizedPayment, deliveryAddress, instructions || null, substitutionPreference || 'call']
-            );
-            const orderId = orderResult.insertId;
-
-            if (normalizedPaymentMethod === 'wallet' || normalizedPaymentMethod === 'coins') {
-                try {
-                    const payRes = await processCustomerPayment(userId, total, orderId, normalizedPaymentMethod);
-                    console.log(`[Payment] Deducted ${total} from user #${userId} ${normalizedPaymentMethod}. Transaction: ${payRes.transactionId}`);
-                } catch (payErr) {
-                    console.error(`[Payment Error] Post-order debit failed: ${payErr.message}`);
-                    return sendError(res, 500, "Payment processing failed. Please contact support.");
-                }
-            }
-
-            if (items && items.length > 0) {
-                const itemValues = items.map(i => [orderId, i.id, i.name, i.quantity, i.price || 0]);
-                await db.query('INSERT INTO store_order_items (order_id, product_id, product_name, quantity, price) VALUES ?', [itemValues]);
-            }
-
-            // Rider Allocation Logic
-            const [storeRows] = await db.execute('SELECT * FROM stores WHERE id = ?', [storeId]);
-            const storeData = storeRows[0] || {};
-            const storeLoc = {
-                latitude: storeData.latitude || 10.7202,
-                longitude: storeData.longitude || 122.5621
-            };
-
-            const [onlineRiders] = await db.execute('SELECT id, name, current_latitude as latitude, current_longitude as longitude FROM riders WHERE is_online = 1');
-
-            const ridersWithDistance = onlineRiders
-                .filter(r => r.latitude && r.longitude) // Ensure coords exist
-                .map(r => ({
-                    ...r,
-                    distance: haversineDistance(storeLoc.latitude, storeLoc.longitude, r.latitude, r.longitude)
-                })).sort((a, b) => a.distance - b.distance);
-
-            const closestRiders = ridersWithDistance.slice(0, 10);
-
-            console.log(`[StoreOrder #${orderId}] Payment Successful. Notifying 10 closest riders:`);
-            closestRiders.forEach(r => console.log(` - Rider ${r.name} (${r.distance.toFixed(2)}km away)`));
-
-            // Notify Merchant
-            io.to(`merchant_${storeId}`).emit('new_order', {
-                id: orderId,
-                status: 'pending',
-                total_amount: total,
-                payment_method: normalizedPayment,
-                type: 'store',
-                customer_name: customerName,
-                customer_phone: customerPhone,
-                created_at: new Date(),
-                items: items,
-                delivery_address: deliveryAddress,
-                instructions: instructions || null,
-                substitution_preference: substitutionPreference || 'call'
-            });
-
-            return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Order placed successfully");
-
-        } else if (orderType === 'ride') {
-            // === HANDLING RIDE ORDER ===
-            const { pickup, dropoff, fare, distance } = req.body;
-
-            const [resOrder] = await db.execute(
-                `INSERT INTO ride_orders 
-                (user_id, pickup_lat, pickup_lon, pickup_address, dropoff_lat, dropoff_lon, dropoff_address, fare, distance_km, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-                [userId, pickup.lat, pickup.lon, pickup.address, dropoff.lat, dropoff.lon, dropoff.address, fare, distance]
-            );
-            const orderId = resOrder.insertId;
-
-            const [onlineRiders] = await db.execute('SELECT id, name, current_latitude as latitude, current_longitude as longitude FROM riders WHERE is_online = 1');
-
-            const ridersWithDistance = onlineRiders
-                .filter(r => r.latitude && r.longitude)
-                .map(r => ({
-                    ...r,
-                    distance: haversineDistance(pickup.lat, pickup.lon, r.latitude, r.longitude)
-                })).sort((a, b) => a.distance - b.distance);
-
-            const closestRiders = ridersWithDistance.slice(0, 10);
-
-            console.log(`[RideOrder #${orderId}] Booking Request. Notifying 10 closest riders to Pickup Point:`);
-            closestRiders.forEach(r => console.log(` - Rider ${r.name} (${r.distance.toFixed(2)}km away)`));
-
-            return sendSuccess(res, { orderId, ridersNotified: closestRiders.length }, "Ride booked successfully");
-
-        } else {
-            // === HANDLING RESTAURANT ORDER ===
-            if (!restaurantId) return sendError(res, 400, "Restaurant ID required");
-
-            const [restCheck] = await db.execute('SELECT is_available FROM restaurants WHERE id = ?', [restaurantId]);
-            if (!restCheck.length || restCheck[0].is_available === 0) {
-                return sendError(res, 400, "Restaurant is currently offline/closed.");
-            }
-
-            const [addrRows] = await db.execute('SELECT * FROM user_addresses WHERE user_id = ? AND is_default = 1', [userId]);
-            const deliveryAddress = addrRows.length > 0 ? addrRows[0].address : "User Location";
-
-            let normalizedPayment = normalizedPaymentMethod;
-            if (normalizedPayment === 'cash' || !normalizedPayment) normalizedPayment = 'COD';
-            else if (normalizedPayment === 'wallet') normalizedPayment = 'Wallet';
-            else if (normalizedPayment === 'coins') normalizedPayment = 'Coins';
-            else normalizedPayment = normalizedPayment.toUpperCase();
-
-            const [resOrder] = await db.execute(
-                `INSERT INTO orders (user_id, restaurant_id, total_amount, payment_method, status, created_at, instructions, substitution_preference) VALUES (?, ?, ?, ?, 'pending', NOW(), ?, ?)`,
-                [userId, restaurantId, total || 0, normalizedPayment, instructions || null, substitutionPreference || 'call']
-            );
-
-            const orderId = resOrder.insertId;
-
-            if (normalizedPaymentMethod === 'wallet' || normalizedPaymentMethod === 'coins') {
-                try {
-                    const payRes = await processCustomerPayment(userId, total, orderId, normalizedPaymentMethod);
-                    console.log(`[Payment] Deducted ${total} from user #${userId} ${normalizedPaymentMethod}. Transaction: ${payRes.transactionId}`);
-                } catch (payErr) {
-                    console.error(`[Payment Error] Post-order debit failed: ${payErr.message}`);
-                    return sendError(res, 500, "Payment processing failed. Please contact support.");
-                }
-            }
-
-            if (items && items.length > 0) {
-                for (const item of items) {
-                    const itemId = item.id || item.menu_item_id;
-                    if (!itemId) continue;
-                    await db.execute(
-                        `INSERT INTO order_items (order_id, menu_item_id, quantity, price_at_time) VALUES (?, ?, ?, ?)`,
-                        [orderId, itemId, item.quantity || 1, item.price || 0]
-                    );
-                }
-            }
-
-            io.to(`merchant_${restaurantId}`).emit('new_order', {
-                id: orderId,
-                status: 'pending',
-                total_amount: total,
-                payment_method: normalizedPayment,
-                type: 'food',
-                customer_name: customerName,
-                customer_phone: customerPhone,
-                created_at: new Date(),
-                restaurant_id: restaurantId,
-                items: items || [],
-                delivery_address: deliveryAddress || 'TBA',
-                instructions: instructions || null,
-                substitution_preference: substitutionPreference || 'call'
-            });
-
-            return sendSuccess(res, { orderId: orderId }, "Food Order placed successfully");
-        }
     } catch (err) {
         sendError(res, 500, "Order Creation Failed", "DB_ERROR", err);
     }

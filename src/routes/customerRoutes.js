@@ -21,6 +21,9 @@ import {
     placeOrder
 } from '../controllers/customerController.js';
 
+import { validate } from '../middleware/validate.js';
+import { placeOrderSchema, saveAddressSchema, updateLocationSchema } from '../schemas/customerSchemas.js';
+
 const router = express.Router();
 
 // ==========================================
@@ -31,13 +34,13 @@ const router = express.Router();
 router.get('/users/addresses', verifyToken, getUserAddresses);
 
 // Save user address
-router.post('/users/addresses', verifyToken, saveUserAddress);
+router.post('/users/addresses', verifyToken, validate(saveAddressSchema), saveUserAddress);
 
 // Delete user address
 router.delete('/users/addresses/:id', verifyToken, deleteUserAddress);
 
 // Update user GPS location
-router.patch('/users/location', verifyToken, updateUserLocation);
+router.patch('/users/location', verifyToken, validate(updateLocationSchema), updateUserLocation);
 
 // Get user location
 router.get('/users/location', verifyToken, getUserLocation);
@@ -89,6 +92,6 @@ router.post('/pabili/orders', verifyToken, createPabiliOrder);
 router.post('/pabili/orders/:id/cancel', verifyToken, cancelPabiliOrder);
 
 // PLACE ORDER (Complex Logic)
-router.post('/orders', verifyToken, placeOrder);
+router.post('/orders', verifyToken, validate(placeOrderSchema), placeOrder);
 
 export default router;

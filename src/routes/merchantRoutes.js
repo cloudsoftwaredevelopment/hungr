@@ -29,6 +29,9 @@ import {
     deleteDiscount
 } from '../controllers/merchantController.js';
 
+import { validate } from '../middleware/validate.js';
+import { updateStatusSchema, updateMerchantLocationSchema, notifyRidersSchema } from '../schemas/merchantSchemas.js';
+
 const router = express.Router();
 
 // Login
@@ -38,10 +41,10 @@ router.post('/login', login);
 router.post('/change-password', verifyToken, changePassword);
 
 // Update Status (Online/Offline)
-router.post('/status', verifyToken, updateStatus);
+router.post('/status', verifyToken, validate(updateStatusSchema), updateStatus);
 
 // Update Merchant Location
-router.patch('/location', verifyToken, updateLocation);
+router.patch('/location', verifyToken, validate(updateMerchantLocationSchema), updateLocation);
 
 // Get Orders (Food & Store)
 router.get('/orders', verifyToken, getOrders);
@@ -56,7 +59,7 @@ router.post('/verify-rider', verifyToken, verifyRider);
 router.post('/orders/:id/status', verifyToken, updateOrderStatus);
 
 // Notify Closest Riders (Manual Trigger or Retry)
-router.post('/orders/:id/notify-riders', verifyToken, notifyRiders);
+router.post('/orders/:id/notify-riders', verifyToken, validate(notifyRidersSchema), notifyRiders);
 
 // Find orders by dispatch code
 router.get('/orders/by-dispatch-code', verifyToken, findByDispatchCode);

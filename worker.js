@@ -9,7 +9,10 @@ import { AUTO_CANCEL_MINUTES } from './src/config/constants.js';
 
 console.log('[Worker] Starting background process...');
 
+import { initDb } from './src/config/initDb.js';
+
 // Run immediately on start
+initDb();
 autoCancelTimeoutOrders();
 expandNotificationRadius();
 
